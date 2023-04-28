@@ -35,6 +35,12 @@ const (
 	LabelStatusCode     = "status.code"
 	LabelStatus         = "status"
 	LabelKind           = "kind"
+
+	LabelDBInstance   = "db.instance"
+	LabelDBType       = "db.type"
+	LabelMemcacheKeys = "memcache.keys"
+	LabelPath         = "path"
+	LabelPeerHostname = "peer.hostname"
 )
 
 // These definition levels match the schema below
@@ -80,6 +86,11 @@ var (
 		LabelHTTPUrl:          "rs.list.element.ss.list.element.Spans.list.element.HttpUrl",
 		LabelHTTPStatusCode:   "rs.list.element.ss.list.element.Spans.list.element.HttpStatusCode",
 		LabelStatusCode:       "rs.list.element.ss.list.element.Spans.list.element.StatusCode",
+		LabelDBInstance:       "rs.list.element.ss.list.element.Spans.list.element.DBInstance",
+		LabelDBType:           "rs.list.element.ss.list.element.Spans.list.element.DBType",
+		LabelMemcacheKeys:     "rs.list.element.ss.list.element.Spans.list.element.MemcacheKeys",
+		LabelPath:             "rs.list.element.ss.list.element.Spans.list.element.Path",
+		LabelPeerHostname:     "rs.list.element.ss.list.element.Spans.list.element.PeerHostname",
 	}
 	// the two below are used in tag name search. they only include
 	//  custom attributes that are mapped to parquet "special" columns
@@ -98,6 +109,11 @@ var (
 		LabelHTTPMethod:     "rs.list.element.ss.list.element.Spans.list.element.HttpMethod",
 		LabelHTTPUrl:        "rs.list.element.ss.list.element.Spans.list.element.HttpUrl",
 		LabelHTTPStatusCode: "rs.list.element.ss.list.element.Spans.list.element.HttpStatusCode",
+		LabelDBInstance:     "rs.list.element.ss.list.element.Spans.list.element.DBInstance",
+		LabelDBType:         "rs.list.element.ss.list.element.Spans.list.element.DBType",
+		LabelMemcacheKeys:   "rs.list.element.ss.list.element.Spans.list.element.MemcacheKeys",
+		LabelPath:           "rs.list.element.ss.list.element.Spans.list.element.Path",
+		LabelPeerHostname:   "rs.list.element.ss.list.element.Spans.list.element.PeerHostname",
 	}
 )
 
@@ -154,6 +170,13 @@ type Span struct {
 	HttpMethod     *string `parquet:",snappy,optional,dict"`
 	HttpUrl        *string `parquet:",snappy,optional,dict"`
 	HttpStatusCode *int64  `parquet:",snappy,optional"`
+
+	// Dedicated columns (5 most frequent span attributes in Roblox blocks)
+	DBInstance   *string `parquet:",snappy,optional"`
+	DBType       *string `parquet:",snappy,optional"`
+	MemcacheKeys *string `parquet:",snappy,optional"`
+	Path         *string `parquet:",snappy,optional"`
+	PeerHostname *string `parquet:",snappy,optional"`
 }
 
 type InstrumentationScope struct {
@@ -388,6 +411,36 @@ func traceToParquet(id common.ID, tr *tempopb.Trace, ot *Trace) *Trace {
 						intVal, ok := a.Value.Value.(*v1.AnyValue_IntValue)
 						if ok {
 							ss.HttpStatusCode = &intVal.IntValue
+							special = true
+						}
+					case LabelDBInstance:
+						strVal, ok := a.Value.Value.(*v1.AnyValue_StringValue)
+						if ok {
+							ss.DBInstance = &strVal.StringValue
+							special = true
+						}
+					case LabelDBType:
+						strVal, ok := a.Value.Value.(*v1.AnyValue_StringValue)
+						if ok {
+							ss.DBType = &strVal.StringValue
+							special = true
+						}
+					case LabelMemcacheKeys:
+						strVal, ok := a.Value.Value.(*v1.AnyValue_StringValue)
+						if ok {
+							ss.MemcacheKeys = &strVal.StringValue
+							special = true
+						}
+					case LabelPath:
+						strVal, ok := a.Value.Value.(*v1.AnyValue_StringValue)
+						if ok {
+							ss.Path = &strVal.StringValue
+							special = true
+						}
+					case LabelPeerHostname:
+						strVal, ok := a.Value.Value.(*v1.AnyValue_StringValue)
+						if ok {
+							ss.PeerHostname = &strVal.StringValue
 							special = true
 						}
 					}
@@ -628,6 +681,58 @@ func parquetTraceToTempopbTrace(parquetTrace *Trace) *tempopb.Trace {
 						Value: &v1.AnyValue{
 							Value: &v1.AnyValue_IntValue{
 								IntValue: *span.HttpStatusCode,
+							},
+						},
+					})
+				}
+
+				// Dedicated span attribute columns
+				if span.DBInstance != nil {
+					protoSpan.Attributes = append(protoSpan.Attributes, &v1.KeyValue{
+						Key: LabelDBInstance,
+						Value: &v1.AnyValue{
+							Value: &v1.AnyValue_StringValue{
+								StringValue: *span.DBInstance,
+							},
+						},
+					})
+				}
+				if span.DBType != nil {
+					protoSpan.Attributes = append(protoSpan.Attributes, &v1.KeyValue{
+						Key: LabelDBType,
+						Value: &v1.AnyValue{
+							Value: &v1.AnyValue_StringValue{
+								StringValue: *span.DBType,
+							},
+						},
+					})
+				}
+				if span.MemcacheKeys != nil {
+					protoSpan.Attributes = append(protoSpan.Attributes, &v1.KeyValue{
+						Key: LabelMemcacheKeys,
+						Value: &v1.AnyValue{
+							Value: &v1.AnyValue_StringValue{
+								StringValue: *span.MemcacheKeys,
+							},
+						},
+					})
+				}
+				if span.Path != nil {
+					protoSpan.Attributes = append(protoSpan.Attributes, &v1.KeyValue{
+						Key: LabelPath,
+						Value: &v1.AnyValue{
+							Value: &v1.AnyValue_StringValue{
+								StringValue: *span.Path,
+							},
+						},
+					})
+				}
+				if span.PeerHostname != nil {
+					protoSpan.Attributes = append(protoSpan.Attributes, &v1.KeyValue{
+						Key: LabelPeerHostname,
+						Value: &v1.AnyValue{
+							Value: &v1.AnyValue_StringValue{
+								StringValue: *span.PeerHostname,
 							},
 						},
 					})
