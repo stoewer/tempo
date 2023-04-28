@@ -196,9 +196,31 @@ func vparquetSpan1to2(span *vparquet.Span, v2span *vparquet2.Span) {
 
 	v2span.Attrs = make([]vparquet2.Attribute, 0, len(span.Attrs))
 	for _, attr := range span.Attrs {
-		var v2attr vparquet2.Attribute
-		vparquetAttribute1to2(&attr, &v2attr)
-		v2span.Attrs = append(v2span.Attrs, v2attr)
+		special := false
+
+		switch attr.Key {
+		case vparquet2.LabelDBInstance:
+			v2span.DBInstance = attr.Value
+			special = true
+		case vparquet2.LabelDBType:
+			v2span.DBType = attr.Value
+			special = true
+		case vparquet2.LabelMemcacheKeys:
+			v2span.MemcacheKeys = attr.Value
+			special = true
+		case vparquet2.LabelPath:
+			v2span.Path = attr.Value
+			special = true
+		case vparquet2.LabelPeerHostname:
+			v2span.PeerHostname = attr.Value
+			special = true
+		}
+
+		if !special {
+			var v2attr vparquet2.Attribute
+			vparquetAttribute1to2(&attr, &v2attr)
+			v2span.Attrs = append(v2span.Attrs, v2attr)
+		}
 	}
 }
 
