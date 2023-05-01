@@ -118,6 +118,11 @@ const (
 	columnPathSpanHTTPStatusCode = "rs.list.element.ss.list.element.Spans.list.element.HttpStatusCode"
 	columnPathSpanHTTPMethod     = "rs.list.element.ss.list.element.Spans.list.element.HttpMethod"
 	columnPathSpanHTTPURL        = "rs.list.element.ss.list.element.Spans.list.element.HttpUrl"
+	columnPathSpanDBInstance     = "rs.list.element.ss.list.element.Spans.list.element.DBInstance"
+	columnPathSpanDBType         = "rs.list.element.ss.list.element.Spans.list.element.DBType"
+	columnPathSpanMemcacheKeys   = "rs.list.element.ss.list.element.Spans.list.element.MemcacheKeys"
+	columnPathSpanPath           = "rs.list.element.ss.list.element.Spans.list.element.Path"
+	columnPathSpanPeerHostname   = "rs.list.element.ss.list.element.Spans.list.element.PeerHostname"
 
 	otherEntrySpansetKey = "spanset"
 	otherEntrySpanKey    = "span"
@@ -154,6 +159,11 @@ var wellKnownColumnLookups = map[string]struct {
 	LabelHTTPStatusCode: {columnPathSpanHTTPStatusCode, traceql.AttributeScopeSpan, traceql.TypeInt},
 	LabelHTTPMethod:     {columnPathSpanHTTPMethod, traceql.AttributeScopeSpan, traceql.TypeString},
 	LabelHTTPUrl:        {columnPathSpanHTTPURL, traceql.AttributeScopeSpan, traceql.TypeString},
+	LabelDBInstance:     {columnPathSpanDBInstance, traceql.AttributeScopeSpan, traceql.TypeString},
+	LabelDBType:         {columnPathSpanDBType, traceql.AttributeScopeSpan, traceql.TypeString},
+	LabelMemcacheKeys:   {columnPathSpanMemcacheKeys, traceql.AttributeScopeSpan, traceql.TypeString},
+	LabelPath:           {columnPathSpanPath, traceql.AttributeScopeSpan, traceql.TypeString},
+	LabelPeerHostname:   {columnPathSpanPeerHostname, traceql.AttributeScopeSpan, traceql.TypeString},
 }
 
 // Fetch spansets from the block for the given TraceQL FetchSpansRequest. The request is checked for

@@ -31,6 +31,11 @@ var translateTagToAttribute = map[string]traceql.Attribute{
 	LabelHTTPMethod:       traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelHTTPMethod),
 	LabelHTTPUrl:          traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelHTTPUrl),
 	LabelHTTPStatusCode:   traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelHTTPStatusCode),
+	LabelDBInstance:       traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelDBInstance),
+	LabelDBType:           traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelDBType),
+	LabelMemcacheKeys:     traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelMemcacheKeys),
+	LabelPath:             traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelPath),
+	LabelPeerHostname:     traceql.NewScopedAttribute(traceql.AttributeScopeSpan, false, LabelPeerHostname),
 }
 
 var nonTraceQLAttributes = map[string]string{
