@@ -3,6 +3,7 @@ package vparquet
 import (
 	"context"
 	"path"
+	"runtime"
 	"testing"
 
 	"github.com/google/uuid"
@@ -29,49 +30,53 @@ func BenchmarkRobloxBlockTraceQL(b *testing.B) {
 		{"attr01NoMatch", traceql.MustExtractFetchSpansRequest("{ .action.route = `does-not-exist` }"), true},
 		{"attr01Match01", traceql.MustExtractFetchSpansRequest("{ .action.route = `XboxLive.GetAccountInfo` }"), false},
 		{"attr01Match02", traceql.MustExtractFetchSpansRequest("{ .action.route = `Voice.InitiateSubscriptions` }"), false},
-		{"attr02Match01", traceql.MustExtractFetchSpansRequest("{ .sampler.type = `lowerbound` }"), false},
-		{"attr02Match02", traceql.MustExtractFetchSpansRequest("{ .sampler.type = `probabilistic` }"), false},
+		//{"attr02Match01", traceql.MustExtractFetchSpansRequest("{ .geolocation.country = `Poland` }"), false},
+		//{"attr02Match02", traceql.MustExtractFetchSpansRequest("{ .geolocation.country = `Sweden` }"), false},
 	}
 
 	ctx := context.TODO()
 	tenantID := "357703"
 	blockID := uuid.MustParse("002ea495-2323-45dc-ad03-432ea188d1aa")
 
-	r, _, _, err := local.New(&local.Config{
-		Path: path.Join("../../../bench-data/vparquet"),
-	})
-	require.NoError(b, err)
-
-	rr := backend.NewReader(r)
-	meta, err := rr.BlockMeta(ctx, blockID, tenantID)
-	require.NoError(b, err)
-
-	opts := common.DefaultSearchOptions()
-	opts.StartPage = 10
-	opts.TotalPages = 10
-
-	block := newBackendBlock(meta, rr)
-	_, _, err = block.openForSearch(ctx, opts)
-	require.NoError(b, err)
-
 	for _, tc := range testCases {
 
+		r, _, _, err := local.New(&local.Config{
+			Path: path.Join("../../../bench-data/vparquet"),
+		})
+		require.NoError(b, err)
+
+		rr := backend.NewReader(r)
+		meta, err := rr.BlockMeta(ctx, blockID, tenantID)
+		require.NoError(b, err)
+
+		opts := common.DefaultSearchOptions()
+		opts.StartPage = 10
+		opts.TotalPages = 10
+
+		block := newBackendBlock(meta, rr)
+		_, _, err = block.openForSearch(ctx, opts)
+		require.NoError(b, err)
+
 		b.Run(tc.name, func(b *testing.B) {
-			b.ResetTimer()
+			runtime.GC()
 			bytesRead := 0
+			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
 				resp, err := block.Fetch(ctx, tc.req, opts)
 				require.NoError(b, err)
 				require.NotNil(b, resp)
 
-				// Read first 20 results (if any)
+				// Read first 40 results (if any)
 				var count int
-				for count < 20 {
+				for count < 40 {
 					ss, err := resp.Results.Next(ctx)
 					require.NoError(b, err)
 					if ss == nil {
 						break
+					}
+					if count == 0 && len(ss.Spans) > 0 {
+						//b.Log(tc.name, ss.Spans[0].ID())
 					}
 					count += len(ss.Spans)
 				}
@@ -84,7 +89,6 @@ func BenchmarkRobloxBlockTraceQL(b *testing.B) {
 				bytesRead += int(resp.Bytes())
 			}
 			b.SetBytes(int64(bytesRead) / int64(b.N))
-			b.ReportMetric(float64(bytesRead)/float64(b.N)/1000.0/1000.0, "MB_io/op")
 		})
 	}
 }
