@@ -55,10 +55,12 @@ func BenchmarkRobloxBlockTraceQL(b *testing.B) {
 
 		block := newBackendBlock(meta, rr)
 		_, _, err = block.openForSearch(ctx, opts)
+
 		require.NoError(b, err)
 
 		b.Run(tc.name, func(b *testing.B) {
 			runtime.GC()
+
 			bytesRead := 0
 			b.ResetTimer()
 
@@ -90,5 +92,7 @@ func BenchmarkRobloxBlockTraceQL(b *testing.B) {
 			}
 			b.SetBytes(int64(bytesRead) / int64(b.N))
 		})
+
+		rr.Shutdown()
 	}
 }
