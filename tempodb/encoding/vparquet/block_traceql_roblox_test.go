@@ -22,16 +22,16 @@ func BenchmarkRobloxBlockTraceQL(b *testing.B) {
 		noMatch bool
 	}{
 		// span
-		{"dedicated01NoMatch", traceql.MustExtractFetchSpansRequest("{ .db.instance = `does-not-exist` }"), true},
-		{"dedicated01Match01", traceql.MustExtractFetchSpansRequest("{ .db.instance = `GameSearchUITreatments` }"), false},
-		{"dedicated01Match02", traceql.MustExtractFetchSpansRequest("{ .db.instance = `FriendsMcrouterGroup` }"), false},
-		{"dedicated02Match01", traceql.MustExtractFetchSpansRequest("{ .memcache.keys = `p1-Unv:4027164587` }"), false},
-		{"dedicated02Match02", traceql.MustExtractFetchSpansRequest("{ .memcache.keys = `p1-BundleId:667` }"), false},
-		{"attr01NoMatch", traceql.MustExtractFetchSpansRequest("{ .action.route = `does-not-exist` }"), true},
-		{"attr01Match01", traceql.MustExtractFetchSpansRequest("{ .action.route = `XboxLive.GetAccountInfo` }"), false},
-		{"attr01Match02", traceql.MustExtractFetchSpansRequest("{ .action.route = `Voice.InitiateSubscriptions` }"), false},
-		//{"attr02Match01", traceql.MustExtractFetchSpansRequest("{ .geolocation.country = `Poland` }"), false},
-		//{"attr02Match02", traceql.MustExtractFetchSpansRequest("{ .geolocation.country = `Sweden` }"), false},
+		{"dedicated01NoMatch", traceql.MustExtractFetchSpansRequest("{ span.db.instance = `does-not-exist` }"), true},
+		{"dedicated01Match01", traceql.MustExtractFetchSpansRequest("{ span.db.instance = `GameSearchUITreatments` }"), false},
+		{"dedicated01Match02", traceql.MustExtractFetchSpansRequest("{ span.db.instance = `FriendsMcrouterGroup` }"), false},
+		{"dedicated02Match01", traceql.MustExtractFetchSpansRequest("{ span.memcache.keys = `p1-Unv:4027164587` }"), false},
+		{"dedicated02Match02", traceql.MustExtractFetchSpansRequest("{ span.memcache.keys = `p1-BundleId:667` }"), false},
+		{"attr01NoMatch", traceql.MustExtractFetchSpansRequest("{ span.action.route = `does-not-exist` }"), true},
+		{"attr01Match01", traceql.MustExtractFetchSpansRequest("{ span.action.route = `XboxLive.GetAccountInfo` }"), false},
+		{"attr01Match02", traceql.MustExtractFetchSpansRequest("{ span.action.route = `Voice.InitiateSubscriptions` }"), false},
+		//{"attr02Match01", traceql.MustExtractFetchSpansRequest("{ span.geolocation.country = `Poland` }"), false},
+		//{"attr02Match02", traceql.MustExtractFetchSpansRequest("{ span.geolocation.country = `Sweden` }"), false},
 	}
 
 	ctx := context.TODO()
