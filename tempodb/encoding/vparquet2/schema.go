@@ -172,11 +172,11 @@ type Span struct {
 	HttpStatusCode *int64  `parquet:",snappy,optional"`
 
 	// Dedicated columns (5 most frequent span attributes in Roblox blocks)
-	DBInstance   *string `parquet:",snappy,optional"`
-	DBType       *string `parquet:",snappy,optional"`
-	MemcacheKeys *string `parquet:",snappy,optional"`
-	Path         *string `parquet:",snappy,optional"`
-	PeerHostname *string `parquet:",snappy,optional"`
+	DBInstance   *string `parquet:",dict,snappy,optional"`
+	DBType       *string `parquet:",dict,snappy,optional"`
+	MemcacheKeys *string `parquet:",dict,snappy,optional"`
+	Path         *string `parquet:",dict,snappy,optional"`
+	PeerHostname *string `parquet:",dict,snappy,optional"`
 }
 
 type InstrumentationScope struct {
