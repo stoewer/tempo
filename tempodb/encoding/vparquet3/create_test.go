@@ -72,7 +72,7 @@ func TestCreateBlockHonorsTraceStartEndTimesFromWalMeta(t *testing.T) {
 // 		if tr[0] == nil {
 // 			break
 // 		}
-// 		protoTr, err := parquetTraceToTempopbTrace(tr[0])
+// 		protoTr, err := ParquetTraceToTempopbTrace(tr[0])
 // 		require.NoError(t, err)
 
 // 		protoSz := protoTr.Size()
