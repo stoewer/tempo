@@ -13,29 +13,29 @@ const (
 	recalculationInterval = 10_000
 )
 
-type WeightedAttribute struct {
+type weightedAttribute struct {
 	Name   string // the attributes name
 	Weight int    // an abstract indicator of the attribute's occurrence and size
 }
 
-type WeightedAttrIterator func(trace *tempopb.Trace, callback func(attr *WeightedAttribute) bool) bool
+type weightedAttrIterator func(trace *tempopb.Trace, callback func(attr *weightedAttribute) bool) bool
 
-func NewAttributeAnalyzer(topAttrCount int, weightedAttrIterator WeightedAttrIterator) *AttributeAnalyzer {
-	return &AttributeAnalyzer{
+func newAttrAnalyzer(topAttrCount int, weightedAttrIterator weightedAttrIterator) *attrAnalyzer {
+	return &attrAnalyzer{
 		weightedAttrIterator: weightedAttrIterator,
 		topAttrCount:         topAttrCount,
-		attrs:                make(map[string]*WeightedAttribute, topAttrCount),
-		attrBuffer:           make([]*WeightedAttribute, 0, topAttrCount),
+		attrs:                make(map[string]*weightedAttribute, topAttrCount),
+		attrBuffer:           make([]*weightedAttribute, 0, topAttrCount),
 	}
 }
 
-// AttributeAnalyzer is used to determine the top attributes in the overall trace data.
-type AttributeAnalyzer struct {
-	weightedAttrIterator  WeightedAttrIterator
+// attrAnalyzer is used to determine the top attributes in the overall trace data.
+type attrAnalyzer struct {
+	weightedAttrIterator  weightedAttrIterator
 	isSaturated           bool
 	isReady               bool
-	attrs                 map[string]*WeightedAttribute
-	attrBuffer            []*WeightedAttribute
+	attrs                 map[string]*weightedAttribute
+	attrBuffer            []*weightedAttribute
 	attrCount             int
 	attrsNotEvaluated     int
 	topAttrCount          int
@@ -44,7 +44,7 @@ type AttributeAnalyzer struct {
 }
 
 // Analyze analyzes the attributes of a given trace
-func (a *AttributeAnalyzer) Analyze(trace *tempopb.Trace) {
+func (a *attrAnalyzer) Analyze(trace *tempopb.Trace) {
 	if a.isSaturated {
 		return
 	}
@@ -57,12 +57,12 @@ func (a *AttributeAnalyzer) Analyze(trace *tempopb.Trace) {
 }
 
 // IsReady returns true if the analysis is good enough to be used
-func (a *AttributeAnalyzer) IsReady() bool {
+func (a *attrAnalyzer) IsReady() bool {
 	return a.isReady
 }
 
 // Reset resets the analyzer while trying to reuse the allocated memory
-func (a *AttributeAnalyzer) Reset() {
+func (a *attrAnalyzer) Reset() {
 	a.isSaturated = false
 	a.isReady = false
 	clear(a.attrs)
@@ -75,14 +75,14 @@ func (a *AttributeAnalyzer) Reset() {
 }
 
 // TopAttributes returns the top attributes by overall weight
-func (a *AttributeAnalyzer) TopAttributes() []string {
+func (a *attrAnalyzer) TopAttributes() []string {
 	if a.topAttrs == nil {
 		a.recalculateTopAttrs()
 	}
 	return a.topAttrs[:min(len(a.topAttrs), a.topAttrCount)]
 }
 
-func (a *AttributeAnalyzer) analyzeAttribute(attr *WeightedAttribute) bool {
+func (a *attrAnalyzer) analyzeAttribute(attr *weightedAttribute) bool {
 	a.attrCount++
 	a.attrsNotEvaluated++
 
@@ -102,7 +102,7 @@ func (a *AttributeAnalyzer) analyzeAttribute(attr *WeightedAttribute) bool {
 	return true
 }
 
-func (a *AttributeAnalyzer) recalculationRequired() bool {
+func (a *attrAnalyzer) recalculationRequired() bool {
 	if a.attrCount > 1_000_000 || a.isReady {
 		return a.attrsNotEvaluated > recalculationInterval*10
 	}
@@ -111,7 +111,7 @@ func (a *AttributeAnalyzer) recalculationRequired() bool {
 	return a.attrsNotEvaluated > recalculationInterval
 }
 
-func (a *AttributeAnalyzer) recalculateTopAttrs() {
+func (a *attrAnalyzer) recalculateTopAttrs() {
 	topWeightedAttrs := topAttributesSort(a.attrs, a.topAttrCount, a.attrBuffer)
 
 	topAttrs := make([]string, 0, len(topWeightedAttrs))
@@ -135,7 +135,7 @@ func (a *AttributeAnalyzer) recalculateTopAttrs() {
 
 // topAttributesSort is a simple implementation of topAttributes that uses slices.SortFunc to determine top attributes.
 // This implementation is used for benchmarking and testing purposes.
-func topAttributesSort(attrs map[string]*WeightedAttribute, maxAttrs int, buffer []*WeightedAttribute) []*WeightedAttribute {
+func topAttributesSort(attrs map[string]*weightedAttribute, maxAttrs int, buffer []*weightedAttribute) []*weightedAttribute {
 	buffer = buffer[:0]
 	for _, attr := range attrs {
 		buffer = append(buffer, attr)
@@ -145,7 +145,7 @@ func topAttributesSort(attrs map[string]*WeightedAttribute, maxAttrs int, buffer
 	return buffer[:min(len(attrs), maxAttrs)]
 }
 
-func weightedAttributeSortFn(a, b *WeightedAttribute) int {
+func weightedAttributeSortFn(a, b *weightedAttribute) int {
 	return b.Weight - a.Weight
 }
 
@@ -158,8 +158,8 @@ func extractStringWeight(v *v1.AnyValue) (int, bool) {
 	return 0, false
 }
 
-func resourceAttrIterator(extractWeight extractWeightFn) WeightedAttrIterator {
-	return func(trace *tempopb.Trace, callback func(attr *WeightedAttribute) bool) bool {
+func resourceAttrIterator(extractWeight extractWeightFn) weightedAttrIterator {
+	return func(trace *tempopb.Trace, callback func(attr *weightedAttribute) bool) bool {
 		for _, b := range trace.Batches {
 			if b.Resource != nil {
 				for _, attr := range b.Resource.Attributes {
@@ -168,7 +168,7 @@ func resourceAttrIterator(extractWeight extractWeightFn) WeightedAttrIterator {
 						continue
 					}
 
-					wantNext := callback(&WeightedAttribute{Name: attr.Key, Weight: weight})
+					wantNext := callback(&weightedAttribute{Name: attr.Key, Weight: weight})
 					if !wantNext {
 						return false
 					}
@@ -179,8 +179,8 @@ func resourceAttrIterator(extractWeight extractWeightFn) WeightedAttrIterator {
 	}
 }
 
-func spanAttrIterator(extractWeight extractWeightFn) WeightedAttrIterator {
-	return func(trace *tempopb.Trace, callback func(attr *WeightedAttribute) bool) bool {
+func spanAttrIterator(extractWeight extractWeightFn) weightedAttrIterator {
+	return func(trace *tempopb.Trace, callback func(attr *weightedAttribute) bool) bool {
 		for _, b := range trace.Batches {
 			for _, ss := range b.ScopeSpans {
 				for _, span := range ss.Spans {
@@ -190,7 +190,7 @@ func spanAttrIterator(extractWeight extractWeightFn) WeightedAttrIterator {
 							continue
 						}
 
-						wantNext := callback(&WeightedAttribute{Name: attr.Key, Weight: weight})
+						wantNext := callback(&weightedAttribute{Name: attr.Key, Weight: weight})
 						if !wantNext {
 							return false
 						}

@@ -29,7 +29,7 @@ func init() {
 	rnd = rand.New(rand.NewSource(0))
 }
 
-func TestAttributeAnalyzer_TopAttributes(t *testing.T) {
+func TestAttrAnalyzer_TopAttributes(t *testing.T) {
 	trace := &tempopb.Trace{
 		Batches: []*v1trace.ResourceSpans{{
 			ScopeSpans: []*v1trace.ScopeSpans{{
@@ -91,13 +91,13 @@ func TestAttributeAnalyzer_TopAttributes(t *testing.T) {
 
 	expected := []string{"attr-0", "attr-1", "attr-2", "attr-3", "attr-4", "attr-5", "attr-6", "attr-7", "attr-8", "attr-9"}
 
-	eval := NewAttributeAnalyzer(10, spanAttrIterator(extractStringWeight))
+	eval := newAttrAnalyzer(10, spanAttrIterator(extractStringWeight))
 	eval.Analyze(trace)
 	topAttrs := eval.TopAttributes()
 	assert.Equal(t, expected, topAttrs)
 }
 
-func TestAttributeAnalyzer_IsReady(t *testing.T) {
+func TestAttrAnalyzer_IsReady(t *testing.T) {
 	const (
 		maxRoundsToConverge = 1_000_000
 		parallelism         = 10
@@ -124,9 +124,9 @@ func TestAttributeAnalyzer_IsReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("count-%d-top-%d", tt.attrCount, tt.topAttrCount), func(t *testing.T) {
-			evaluators := make([]*AttributeAnalyzer, parallelism)
+			evaluators := make([]*attrAnalyzer, parallelism)
 			for i := 0; i < parallelism; i++ {
-				evaluators[i] = NewAttributeAnalyzer(tt.topAttrCount, spanAttrIterator(extractStringWeight))
+				evaluators[i] = newAttrAnalyzer(tt.topAttrCount, spanAttrIterator(extractStringWeight))
 			}
 
 			var isReadyCount, rounds, uniqueTopAttrs int
@@ -168,8 +168,8 @@ func TestAttributeAnalyzer_IsReady(t *testing.T) {
 	}
 }
 
-func TestAttributeAnalyzer_IsReadyLocal(t *testing.T) {
-	// t.Skip("local test")
+func TestAttrAnalyzer_IsReadyLocal(t *testing.T) {
+	t.Skip("local test data needed")
 
 	const (
 		basePath     = "/home/astoewer/Downloads/Blocks/vparquet3"
@@ -184,13 +184,8 @@ func TestAttributeAnalyzer_IsReadyLocal(t *testing.T) {
 	}{
 		{parallelism: 10, tenant: "1", block: "5adfcf69-0a0f-4576-85f0-54b2410cd596"},
 		{parallelism: 20, tenant: "1", block: "5adfcf69-0a0f-4576-85f0-54b2410cd596"},
-		//{parallelism: 20, tenant: "1", block: "ed3be876-7341-4270-bcbe-a3f7bba08738"},
-		//{parallelism: 10, tenant: "151892", block: "2d9ad36a-cf60-415e-aa22-ad07a3eec379"},
-		//{parallelism: 20, tenant: "151892", block: "2d9ad36a-cf60-415e-aa22-ad07a3eec379"},
 		{parallelism: 10, tenant: "230482", block: "cf919455-29f3-4c4d-87ec-38495651fe3d"},
 		{parallelism: 20, tenant: "230482", block: "cf919455-29f3-4c4d-87ec-38495651fe3d"},
-		// too short {parallelism: 10, tenant: "23604", block: "3208c7b1-e2e6-4fe6-ba60-6ef7b74bd03d"},
-		// too short {parallelism: 20, tenant: "23604", block: "3208c7b1-e2e6-4fe6-ba60-6ef7b74bd03d"},
 		{parallelism: 10, tenant: "357703", block: "c4a60a84-6425-4bdd-b5b1-7f82479365d4"},
 		{parallelism: 20, tenant: "357703", block: "c4a60a84-6425-4bdd-b5b1-7f82479365d4"},
 		{parallelism: 10, tenant: "41449", block: "2daff472-e5ec-4477-bd19-536f3336efdc"},
@@ -199,9 +194,9 @@ func TestAttributeAnalyzer_IsReadyLocal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("tenant-%s-block-%s-parallel-%d", tt.tenant, tt.block, tt.parallelism), func(t *testing.T) {
-			evaluators := make([]*AttributeAnalyzer, tt.parallelism)
+			evaluators := make([]*attrAnalyzer, tt.parallelism)
 			for i := 0; i < tt.parallelism; i++ {
-				evaluators[i] = NewAttributeAnalyzer(topAttrCount, spanAttrIterator(extractStringWeight))
+				evaluators[i] = newAttrAnalyzer(topAttrCount, spanAttrIterator(extractStringWeight))
 			}
 
 			blockDir := filepath.Join(basePath, tt.tenant, tt.block)
@@ -322,7 +317,7 @@ func Test_spanAttrIterator(t *testing.T) {
 	iterator := spanAttrIterator(extractStringWeight)
 
 	count := 0
-	iterator(trace, func(attr *WeightedAttribute) bool {
+	iterator(trace, func(attr *weightedAttribute) bool {
 		assert.Equal(t, fmt.Sprintf("attr-%d", count), attr.Name, "name does not match")
 		assert.Equal(t, count+1, attr.Weight, "weight does not match")
 		count++
@@ -360,7 +355,7 @@ func Test_resourceAttrIterator(t *testing.T) {
 	iterator := resourceAttrIterator(extractStringWeight)
 
 	count := 0
-	iterator(trace, func(attr *WeightedAttribute) bool {
+	iterator(trace, func(attr *weightedAttribute) bool {
 		assert.Equal(t, fmt.Sprintf("attr-%d", count), attr.Name, "name does not match")
 		assert.Equal(t, count+1, attr.Weight, "weight does not match")
 		count++
@@ -401,7 +396,7 @@ func BenchmarkAttributeAnalyzer(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(fmt.Sprintf("count-%d-top-%d", bm.numAttrs, bm.topAttrs), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				eval := NewAttributeAnalyzer(bm.topAttrs, spanAttrIterator(extractStringWeight))
+				eval := newAttrAnalyzer(bm.topAttrs, spanAttrIterator(extractStringWeight))
 				for i := 0; !eval.IsReady(); i++ {
 					eval.Analyze(traceWithRandomStringAttributes(bm.attrParams))
 				}
