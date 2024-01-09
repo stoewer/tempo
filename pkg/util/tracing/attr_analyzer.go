@@ -3,6 +3,9 @@ package tracing
 import (
 	"math"
 	"slices"
+	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/tempo/pkg/tempopb"
 	v1 "github.com/grafana/tempo/pkg/tempopb/common/v1"
@@ -13,9 +16,113 @@ const (
 	recalculationInterval = 10_000
 )
 
+type TraceAttrAnalyzer struct {
+	minAnalyzerLifespan time.Duration
+	span                struct {
+		current  *attrAnalyzer
+		next     *attrAnalyzer
+		lastSwap time.Time
+	}
+	resource struct {
+		current  *attrAnalyzer
+		next     *attrAnalyzer
+		lastSwap time.Time
+	}
+}
+
+func NewTraceAttrAnalyzer(topAttrCount int, minAnalyzerLifespan time.Duration) *TraceAttrAnalyzer {
+	ta := TraceAttrAnalyzer{
+		minAnalyzerLifespan: minAnalyzerLifespan,
+	}
+
+	now := time.Now()
+	ta.span.current = newAttrAnalyzer(topAttrCount, spanAttrIterator(extractStringWeight))
+	ta.span.next = newAttrAnalyzer(topAttrCount, spanAttrIterator(extractStringWeight))
+	ta.span.lastSwap = now
+	ta.resource.current = newAttrAnalyzer(topAttrCount, resourceAttrIterator(extractStringWeight))
+	ta.resource.next = newAttrAnalyzer(topAttrCount, resourceAttrIterator(extractStringWeight))
+	ta.resource.lastSwap = now
+
+	return &ta
+}
+
+func (ta *TraceAttrAnalyzer) Analyze(trace *tempopb.Trace) {
+	ta.span.current.Analyze(trace)
+	ta.span.next.Analyze(trace)
+	ta.resource.current.Analyze(trace)
+	ta.resource.next.Analyze(trace)
+	return
+}
+
+func (ta *TraceAttrAnalyzer) IsReadySpan() bool {
+	return ta.span.current.IsReady()
+}
+
+func (ta *TraceAttrAnalyzer) TopSpanAttributes() []string {
+	ta.swapAnalyzers()
+	return ta.span.current.TopAttributes()
+}
+
+func (ta *TraceAttrAnalyzer) IsReadyResource() bool {
+	return ta.resource.current.IsReady()
+}
+
+func (ta *TraceAttrAnalyzer) TopResourceAttributes() []string {
+	ta.swapAnalyzers()
+	return ta.resource.current.TopAttributes()
+}
+
+type traceAttrAnalyzerState struct {
+	Span     *attrAnalyzerState `yaml:"span"`
+	Resource *attrAnalyzerState `yaml:"resource"`
+}
+
+func (ta *TraceAttrAnalyzer) RetrieveState() ([]byte, error) {
+	state := traceAttrAnalyzerState{
+		Span:     ta.span.current.RetrieveState(),
+		Resource: ta.resource.current.RetrieveState(),
+	}
+
+	return yaml.Marshal(state)
+}
+
+func (ta *TraceAttrAnalyzer) RestoreState(b []byte) error {
+	var state traceAttrAnalyzerState
+	err := yaml.Unmarshal(b, &state)
+	if err != nil {
+		return err
+	}
+
+	ta.span.current.RestoreState(state.Span)
+	ta.span.next.Reset()
+
+	ta.resource.current.RestoreState(state.Resource)
+	ta.resource.next.Reset()
+
+	return nil
+}
+
+func (ta *TraceAttrAnalyzer) swapAnalyzers() {
+	now := time.Now()
+	if ta.span.next.IsReady() && now.Sub(ta.span.lastSwap) > ta.minAnalyzerLifespan {
+		tmp := ta.span.current
+		ta.span.current = ta.span.next
+		tmp.Reset()
+		ta.span.next = tmp
+		ta.span.lastSwap = now
+	}
+	if ta.resource.next.IsReady() && now.Sub(ta.resource.lastSwap) > ta.minAnalyzerLifespan {
+		tmp := ta.resource.current
+		ta.resource.current = ta.resource.next
+		tmp.Reset()
+		ta.resource.next = tmp
+		ta.resource.lastSwap = now
+	}
+}
+
 type weightedAttribute struct {
-	Name   string // the attributes name
-	Weight int    // an abstract indicator of the attribute's occurrence and size
+	Name   string `yaml:"name"`   // the attributes name
+	Weight int    `yaml:"weight"` // an abstract indicator of the attribute's occurrence and size
 }
 
 type weightedAttrIterator func(trace *tempopb.Trace, callback func(attr *weightedAttribute) bool) bool
@@ -72,6 +179,37 @@ func (a *attrAnalyzer) Reset() {
 	a.topAttrCount = 0
 	a.topAttrUnchangedCount = 0
 	a.topAttrs = nil
+}
+
+type attrAnalyzerState struct {
+	Attrs        []weightedAttribute `yaml:"attrs"`
+	AttrCount    int                 `yaml:"attr_count"`
+	TopAttrCount int                 `yaml:"top_attr_count"`
+	IsReady      bool                `yaml:"is_ready"`
+	IsSaturated  bool                `yaml:"is_saturated"`
+}
+
+func (a *attrAnalyzer) RetrieveState() *attrAnalyzerState {
+	attrs := make([]weightedAttribute, 0, len(a.attrs))
+	return &attrAnalyzerState{
+		Attrs:        attrs,
+		AttrCount:    a.attrCount,
+		TopAttrCount: a.topAttrCount,
+		IsReady:      a.isReady,
+		IsSaturated:  a.isSaturated,
+	}
+}
+
+func (a *attrAnalyzer) RestoreState(state *attrAnalyzerState) {
+	a.Reset()
+	a.attrs = make(map[string]*weightedAttribute, len(state.Attrs))
+	for _, attr := range state.Attrs {
+		a.attrs[attr.Name] = &attr
+	}
+	a.attrCount = state.AttrCount
+	a.topAttrCount = state.TopAttrCount
+	a.isReady = state.IsReady
+	a.isSaturated = state.IsSaturated
 }
 
 // TopAttributes returns the top attributes by overall weight
