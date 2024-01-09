@@ -10,15 +10,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/tempo/pkg/tempopb"
-	v1common "github.com/grafana/tempo/pkg/tempopb/common/v1"
-	v1res "github.com/grafana/tempo/pkg/tempopb/resource/v1"
-	v1trace "github.com/grafana/tempo/pkg/tempopb/trace/v1"
+	v1 "github.com/grafana/tempo/pkg/tempopb/common/v1"
+	res_v1 "github.com/grafana/tempo/pkg/tempopb/resource/v1"
+	trace_v1 "github.com/grafana/tempo/pkg/tempopb/trace/v1"
 	"github.com/grafana/tempo/tempodb/backend"
 	"github.com/grafana/tempo/tempodb/encoding/vparquet3"
 )
@@ -29,71 +30,236 @@ func init() {
 	rnd = rand.New(rand.NewSource(0))
 }
 
-func TestAttrAnalyzer_TopAttributes(t *testing.T) {
-	trace := &tempopb.Trace{
-		Batches: []*v1trace.ResourceSpans{{
-			ScopeSpans: []*v1trace.ScopeSpans{{
-				Spans: []*v1trace.Span{
-					{
-						Attributes: []*v1common.KeyValue{
-							// attributes in the order of their combined weight
-							// weight: 50
-							attr("attr-0", "10aaaaaaaa"),
-							attr("attr-0", "10aaaaaaaa"),
-							attr("attr-0", "10aaaaaaaa"),
-							attr("attr-0", "10aaaaaaaa"),
-							attr("attr-0", "10aaaaaaaa"),
-							// weight: 30
-							attr("attr-1", "15aaaaaaaabbbbb"),
-							attr("attr-1", "15aaaaaaaabbbbb"),
-							// weight: 25
-							attr("attr-2", "25aaaaaaaabbbbbbbbbbccccc"),
-						},
-					},
-					{
-						Attributes: []*v1common.KeyValue{
-							// weight: 20
-							attr("attr-3", "10aaaaaaaa"),
-							attr("attr-3", "10aaaaaaaa"),
-							// weight: 15
-							attr("attr-4", "15aaaaaaaabbbbb"),
-							// weight: 14
-							attr("attr-5", "14aaaaaaaabbbb"),
-							// weight: 13
-							attr("attr-6", "07aaaaa"),
-							attr("attr-6", "06aaaa"),
-							// weight: 12
-							attr("attr-7", "12aaaaaaaabb"),
-							// weight: 10
-							attr("attr-8", "10aaaaaaaa"),
-						},
-					},
-					{
-						Attributes: []*v1common.KeyValue{
-							// weight: 8
-							attr("attr-9", "02"),
-							attr("attr-9", "02"),
-							attr("attr-9", "02"),
-							attr("attr-9", "02"),
-							// weight: 7
-							attr("attr-10", "04aa"),
-							attr("attr-10", "03a"),
-							// rest
-							attr("attr-11", "05aaa"),
-							attr("attr-12", "04aa"),
-							attr("attr-13", "02"),
-						},
-					},
-				},
-			}},
-		}},
+func TestTraceAttrAnalyzer(t *testing.T) {
+	resAttrs := []*v1.KeyValue{
+		// attributes in the order of their combined weight
+		// weight: 50
+		attr("res-attr-0", "10aaaaaaaa"),
+		attr("res-attr-0", "10aaaaaaaa"),
+		attr("res-attr-0", "10aaaaaaaa"),
+		attr("res-attr-0", "10aaaaaaaa"),
+		attr("res-attr-0", "10aaaaaaaa"),
+		// weight: 30
+		attr("res-attr-1", "15aaaaaaaabbbbb"),
+		attr("res-attr-1", "15aaaaaaaabbbbb"),
+		// weight: 25
+		attr("res-attr-2", "25aaaaaaaabbbbbbbbbbccccc"),
+		// weight: 20
+		attr("res-attr-3", "10aaaaaaaa"),
+		attr("res-attr-3", "10aaaaaaaa"),
+		// weight: 15
+		attr("res-attr-4", "15aaaaaaaabbbbb"),
+		// weight: 14
+		attr("res-attr-5", "14aaaaaaaabbbb"),
+		// weight: 13
+		attr("res-attr-6", "07aaaaa"),
+		attr("res-attr-6", "06aaaa"),
+		// weight: 12
+		attr("res-attr-7", "12aaaaaaaabb"),
+		// weight: 10
+		attr("res-attr-8", "10aaaaaaaa"),
+		// weight: 8
+		attr("res-attr-9", "02"),
+		attr("res-attr-9", "02"),
+		attr("res-attr-9", "02"),
+		attr("res-attr-9", "02"),
+		// weight: 7
+		attr("res-attr-10", "04aa"),
+		attr("res-attr-10", "03a"),
+		// rest
+		attr("res-attr-11", "05aaa"),
+		attr("res-attr-12", "04aa"),
+		attr("res-attr-13", "02"),
+		// non strings
+		attr("res-ignore-0", 0),
+		attr("res-ignore-0", 1),
+		attr("res-ignore-0", 2),
+	}
+	expectedResAttrs := []string{"res-attr-0", "res-attr-1", "res-attr-2", "res-attr-3", "res-attr-4", "res-attr-5", "res-attr-6", "res-attr-7", "res-attr-8", "res-attr-9"}
+
+	spanAttrs := []*v1.KeyValue{
+		// attributes in the order of their combined weight
+		// weight: 50
+		attr("span-attr-0", "10aaaaaaaa"),
+		attr("span-attr-0", "10aaaaaaaa"),
+		attr("span-attr-0", "10aaaaaaaa"),
+		attr("span-attr-0", "10aaaaaaaa"),
+		attr("span-attr-0", "10aaaaaaaa"),
+		// weight: 30
+		attr("span-attr-1", "15aaaaaaaabbbbb"),
+		attr("span-attr-1", "15aaaaaaaabbbbb"),
+		// weight: 25
+		attr("span-attr-2", "25aaaaaaaabbbbbbbbbbccccc"),
+		// weight: 20
+		attr("span-attr-3", "10aaaaaaaa"),
+		attr("span-attr-3", "10aaaaaaaa"),
+		// weight: 15
+		attr("span-attr-4", "15aaaaaaaabbbbb"),
+		// weight: 14
+		attr("span-attr-5", "14aaaaaaaabbbb"),
+		// weight: 13
+		attr("span-attr-6", "07aaaaa"),
+		attr("span-attr-6", "06aaaa"),
+		// weight: 12
+		attr("span-attr-7", "12aaaaaaaabb"),
+		// weight: 10
+		attr("span-attr-8", "10aaaaaaaa"),
+		// weight: 8
+		attr("span-attr-9", "02"),
+		attr("span-attr-9", "02"),
+		attr("span-attr-9", "02"),
+		attr("span-attr-9", "02"),
+		// weight: 7
+		attr("span-attr-10", "04aa"),
+		attr("span-attr-10", "03a"),
+		// rest
+		attr("span-attr-11", "05aaa"),
+		attr("span-attr-12", "04aa"),
+		attr("span-attr-13", "02"),
+		// non strings
+		attr("span-ignore-0", 0),
+		attr("span-ignore-0", 1),
+		attr("span-ignore-0", 2),
+	}
+	expectedSpanAttrs := []string{"span-attr-0", "span-attr-1", "span-attr-2", "span-attr-3", "span-attr-4", "span-attr-5", "span-attr-6", "span-attr-7", "span-attr-8", "span-attr-9"}
+
+	rnd.Shuffle(len(spanAttrs), func(i, j int) { spanAttrs[i], spanAttrs[j] = spanAttrs[j], spanAttrs[i] })
+	rnd.Shuffle(len(resAttrs), func(i, j int) { resAttrs[i], resAttrs[j] = resAttrs[j], resAttrs[i] })
+
+	trace := traceFromAttributes(resAttrs, spanAttrs)
+
+	analyzer := NewTraceAttrAnalyzer(10, 10*time.Second)
+	analyzer.Analyze(trace)
+
+	assert.Equal(t, expectedResAttrs, analyzer.TopResourceAttributes())
+	assert.Equal(t, expectedSpanAttrs, analyzer.TopSpanAttributes())
+}
+
+func TestTraceAttrAnalyzer_IsReady(t *testing.T) {
+	const (
+		maxRoundsToConverge = 1_000_000
+		parallelism         = 10
+	)
+
+	tests := []struct {
+		attrCount         int
+		topAttrCount      int
+		spanAttrParam     []stringAttributeParams
+		resourceAttrParam []stringAttributeParams
+	}{
+		{attrCount: 20, topAttrCount: 5},
+		{attrCount: 20, topAttrCount: 10},
+		{attrCount: 50, topAttrCount: 10},
+		{attrCount: 50, topAttrCount: 15},
+		{attrCount: 100, topAttrCount: 10},
+		{attrCount: 100, topAttrCount: 15},
+		{attrCount: 200, topAttrCount: 10},
+		{attrCount: 200, topAttrCount: 15},
+	}
+
+	for i, tt := range tests {
+		tests[i].spanAttrParam = randomStringAttributesParams(tt.attrCount)
+		tests[i].resourceAttrParam = randomStringAttributesParams(tt.attrCount)
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("count-%d-top-%d", tt.attrCount, tt.topAttrCount), func(t *testing.T) {
+			analyzers := make([]*TraceAttrAnalyzer, parallelism)
+			for i := 0; i < parallelism; i++ {
+				analyzers[i] = NewTraceAttrAnalyzer(tt.topAttrCount, 10*time.Second)
+			}
+
+			var isReadyCount, rounds, uniqueResourceAttrs, uniqueSpanAttrs int
+			for isReadyCount < parallelism && rounds < maxRoundsToConverge {
+				rounds++
+
+				analyzer := analyzers[rounds%parallelism]
+				trace := traceFromAttributes(randomStringAttributes(tt.resourceAttrParam), randomStringAttributes(tt.spanAttrParam))
+				analyzer.Analyze(trace)
+
+				var topResourceAttrs, topSpanAttrs []string
+				if rounds%parallelism == 0 {
+					isReadyCount = 0
+					equalResourceAttrs := map[string]struct{}{}
+					equalSpanAttrs := map[string]struct{}{}
+					for _, e := range analyzers {
+						if e.IsReadySpan() && e.IsReadyResource() {
+							isReadyCount++
+
+							topResourceAttrs = e.TopResourceAttributes()
+							equalResourceAttrs[strings.Join(topResourceAttrs, ",")] = struct{}{}
+
+							topSpanAttrs = e.TopSpanAttributes()
+							equalSpanAttrs[strings.Join(topSpanAttrs, ",")] = struct{}{}
+						}
+					}
+
+					uniqueResourceAttrs = len(equalResourceAttrs)
+					uniqueSpanAttrs = len(equalSpanAttrs)
+				}
+
+				if rounds%10_000 == 0 {
+					t.Log("rounds:", rounds, " ready:", isReadyCount, " unique res:", uniqueResourceAttrs, " unique span:", uniqueSpanAttrs)
+				}
+			}
+
+			assert.Equal(t, parallelism, isReadyCount, "not all analyzers are ready")
+			assert.LessOrEqual(t, uniqueResourceAttrs, 2, "not enough analyzers have the same top resource attrs")
+			assert.LessOrEqual(t, uniqueSpanAttrs, 2, "not enough analyzers have the same top span attrs")
+		})
+	}
+}
+
+func TestAttrAnalyzer(t *testing.T) {
+	attrs := []*v1.KeyValue{
+		// attributes in the order of their combined weight
+		// weight: 50
+		attr("attr-0", "10aaaaaaaa"),
+		attr("attr-0", "10aaaaaaaa"),
+		attr("attr-0", "10aaaaaaaa"),
+		attr("attr-0", "10aaaaaaaa"),
+		attr("attr-0", "10aaaaaaaa"),
+		// weight: 30
+		attr("attr-1", "15aaaaaaaabbbbb"),
+		attr("attr-1", "15aaaaaaaabbbbb"),
+		// weight: 25
+		attr("attr-2", "25aaaaaaaabbbbbbbbbbccccc"),
+		// weight: 20
+		attr("attr-3", "10aaaaaaaa"),
+		attr("attr-3", "10aaaaaaaa"),
+		// weight: 15
+		attr("attr-4", "15aaaaaaaabbbbb"),
+		// weight: 14
+		attr("attr-5", "14aaaaaaaabbbb"),
+		// weight: 13
+		attr("attr-6", "07aaaaa"),
+		attr("attr-6", "06aaaa"),
+		// weight: 12
+		attr("attr-7", "12aaaaaaaabb"),
+		// weight: 10attr
+		attr("attr-8", "10aaaaaaaa"),
+		// weight: 8
+		attr("attr-9", "02"),
+		attr("attr-9", "02"),
+		attr("attr-9", "02"),
+		attr("attr-9", "02"),
+		// weight: 7
+		attr("attr-10", "04aa"),
+		attr("attr-10", "03a"),
+		// rest
+		attr("attr-11", "05aaa"),
+		attr("attr-12", "04aa"),
+		attr("attr-13", "02"),
 	}
 
 	expected := []string{"attr-0", "attr-1", "attr-2", "attr-3", "attr-4", "attr-5", "attr-6", "attr-7", "attr-8", "attr-9"}
 
-	eval := newAttrAnalyzer(10, spanAttrIterator(extractStringWeight))
-	eval.Analyze(trace)
-	topAttrs := eval.TopAttributes()
+	rnd.Shuffle(len(attrs), func(i, j int) { attrs[i], attrs[j] = attrs[j], attrs[i] })
+	trace := traceFromAttributes(nil, attrs)
+
+	analyzer := newAttrAnalyzer(10, spanAttrIterator(extractStringWeight))
+	analyzer.Analyze(trace)
+	topAttrs := analyzer.TopAttributes()
 	assert.Equal(t, expected, topAttrs)
 }
 
@@ -124,23 +290,23 @@ func TestAttrAnalyzer_IsReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("count-%d-top-%d", tt.attrCount, tt.topAttrCount), func(t *testing.T) {
-			evaluators := make([]*attrAnalyzer, parallelism)
+			analyzers := make([]*attrAnalyzer, parallelism)
 			for i := 0; i < parallelism; i++ {
-				evaluators[i] = newAttrAnalyzer(tt.topAttrCount, spanAttrIterator(extractStringWeight))
+				analyzers[i] = newAttrAnalyzer(tt.topAttrCount, spanAttrIterator(extractStringWeight))
 			}
 
 			var isReadyCount, rounds, uniqueTopAttrs int
 			for isReadyCount < parallelism && rounds < maxRoundsToConverge {
 				rounds++
 
-				eval := evaluators[rounds%parallelism]
-				eval.Analyze(traceWithRandomStringAttributes(tt.attrParams))
+				analyzer := analyzers[rounds%parallelism]
+				analyzer.Analyze(traceFromAttributes(nil, randomStringAttributes(tt.attrParams)))
 
 				var topAttrs []string
 				if rounds%parallelism == 0 {
 					isReadyCount = 0
 					equalTopAttrs := map[string]struct{}{}
-					for _, e := range evaluators {
+					for _, e := range analyzers {
 						if e.IsReady() {
 							isReadyCount++
 
@@ -156,20 +322,14 @@ func TestAttrAnalyzer_IsReady(t *testing.T) {
 				}
 			}
 
-			equalTopAttrs := map[string]struct{}{}
-			for _, eval := range evaluators {
-				topAttrs := eval.TopAttributes()
-				equalTopAttrs[strings.Join(topAttrs, ",")] = struct{}{}
-			}
-
-			assert.Equal(t, parallelism, isReadyCount, "not all evaluators have converged")
-			assert.LessOrEqual(t, uniqueTopAttrs, 2, "not enough evaluators have the same top attrs")
+			assert.Equal(t, parallelism, isReadyCount, "not all analyzers are ready")
+			assert.LessOrEqual(t, uniqueTopAttrs, 2, "not enough analyzers have the same top attrs")
 		})
 	}
 }
 
 func TestAttrAnalyzer_IsReadyLocal(t *testing.T) {
-	t.Skip("local test data needed")
+	// t.Skip("local test data needed")
 
 	const (
 		basePath     = "/home/astoewer/Downloads/Blocks/vparquet3"
@@ -194,9 +354,9 @@ func TestAttrAnalyzer_IsReadyLocal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("tenant-%s-block-%s-parallel-%d", tt.tenant, tt.block, tt.parallelism), func(t *testing.T) {
-			evaluators := make([]*attrAnalyzer, tt.parallelism)
+			analyzers := make([]*attrAnalyzer, tt.parallelism)
 			for i := 0; i < tt.parallelism; i++ {
-				evaluators[i] = newAttrAnalyzer(topAttrCount, spanAttrIterator(extractStringWeight))
+				analyzers[i] = newAttrAnalyzer(topAttrCount, spanAttrIterator(extractStringWeight))
 			}
 
 			blockDir := filepath.Join(basePath, tt.tenant, tt.block)
@@ -209,14 +369,14 @@ func TestAttrAnalyzer_IsReadyLocal(t *testing.T) {
 			for tr, err := iter.Next(); err == nil && tr != nil && isReadyCount < tt.parallelism; tr, err = iter.Next() {
 				processedTraces++
 
-				eval := evaluators[processedTraces%tt.parallelism]
-				eval.Analyze(tr)
+				analyzer := analyzers[processedTraces%tt.parallelism]
+				analyzer.Analyze(tr)
 
 				var topAttrs []string
 				if processedTraces%tt.parallelism == 0 {
 					isReadyCount = 0
 					equalTopAttrs := map[string]struct{}{}
-					for _, e := range evaluators {
+					for _, e := range analyzers {
 						if e.IsReady() {
 							isReadyCount++
 
@@ -235,27 +395,21 @@ func TestAttrAnalyzer_IsReadyLocal(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			equalTopAttrs := map[string]struct{}{}
-			for _, eval := range evaluators {
-				topAttrs := eval.TopAttributes()
-				equalTopAttrs[strings.Join(topAttrs, ",")] = struct{}{}
-			}
-
-			assert.Equal(t, tt.parallelism, isReadyCount, "not all evaluators have converged")
-			assert.LessOrEqual(t, uniqueTopAttrs, 2, "not enough evaluators have the same top attrs")
+			assert.Equal(t, tt.parallelism, isReadyCount, "not all analyzers are ready")
+			assert.LessOrEqual(t, uniqueTopAttrs, 2, "not enough analyzers have the same top attrs")
 		})
 	}
 }
 
 func Test_spanAttrIterator(t *testing.T) {
 	trace := &tempopb.Trace{
-		Batches: []*v1trace.ResourceSpans{
+		Batches: []*trace_v1.ResourceSpans{
 			{
-				ScopeSpans: []*v1trace.ScopeSpans{
+				ScopeSpans: []*trace_v1.ScopeSpans{
 					{
-						Spans: []*v1trace.Span{
+						Spans: []*trace_v1.Span{
 							{
-								Attributes: []*v1common.KeyValue{
+								Attributes: []*v1.KeyValue{
 									attr("attr-0", "x"),
 									attr("attr-1", "xx"),
 									attr("attr-2", "xxx"),
@@ -263,12 +417,12 @@ func Test_spanAttrIterator(t *testing.T) {
 								},
 							},
 							{
-								Attributes: []*v1common.KeyValue{
+								Attributes: []*v1.KeyValue{
 									attr("attr-3", "xxxx"),
 								},
 							},
 							{
-								Attributes: []*v1common.KeyValue{
+								Attributes: []*v1.KeyValue{
 									attr("attr-4", "xxxxx"),
 									attr("ignore-1", 1),
 								},
@@ -276,9 +430,9 @@ func Test_spanAttrIterator(t *testing.T) {
 						},
 					},
 					{
-						Spans: []*v1trace.Span{
+						Spans: []*trace_v1.Span{
 							{
-								Attributes: []*v1common.KeyValue{
+								Attributes: []*v1.KeyValue{
 									attr("attr-5", "xxxxxx"),
 									attr("attr-6", "xxxxxxx"),
 								},
@@ -288,20 +442,20 @@ func Test_spanAttrIterator(t *testing.T) {
 				},
 			},
 			{
-				ScopeSpans: []*v1trace.ScopeSpans{
+				ScopeSpans: []*trace_v1.ScopeSpans{
 					{
-						Spans: []*v1trace.Span{
+						Spans: []*trace_v1.Span{
 							{
-								Attributes: []*v1common.KeyValue{
+								Attributes: []*v1.KeyValue{
 									attr("attr-7", "xxxxxxxx"),
 								},
 							},
 						},
 					},
 					{
-						Spans: []*v1trace.Span{
+						Spans: []*trace_v1.Span{
 							{
-								Attributes: []*v1common.KeyValue{
+								Attributes: []*v1.KeyValue{
 									attr("attr-8", "xxxxxxxxx"),
 									attr("ignore-2", 2),
 									attr("attr-9", "xxxxxxxxxx"),
@@ -329,10 +483,10 @@ func Test_spanAttrIterator(t *testing.T) {
 
 func Test_resourceAttrIterator(t *testing.T) {
 	trace := &tempopb.Trace{
-		Batches: []*v1trace.ResourceSpans{
+		Batches: []*trace_v1.ResourceSpans{
 			{
-				Resource: &v1res.Resource{
-					Attributes: []*v1common.KeyValue{
+				Resource: &res_v1.Resource{
+					Attributes: []*v1.KeyValue{
 						attr("attr-0", "x"),
 						attr("attr-1", "xx"),
 						attr("ignore-0", 0),
@@ -341,8 +495,8 @@ func Test_resourceAttrIterator(t *testing.T) {
 				},
 			},
 			{
-				Resource: &v1res.Resource{
-					Attributes: []*v1common.KeyValue{
+				Resource: &res_v1.Resource{
+					Attributes: []*v1.KeyValue{
 						attr("attr-3", "xxxx"),
 						attr("attr-4", "xxxxx"),
 						attr("ignore-1", 0),
@@ -396,13 +550,13 @@ func BenchmarkAttributeAnalyzer(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(fmt.Sprintf("count-%d-top-%d", bm.numAttrs, bm.topAttrs), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				eval := newAttrAnalyzer(bm.topAttrs, spanAttrIterator(extractStringWeight))
-				for i := 0; !eval.IsReady(); i++ {
-					eval.Analyze(traceWithRandomStringAttributes(bm.attrParams))
+				analyzer := newAttrAnalyzer(bm.topAttrs, spanAttrIterator(extractStringWeight))
+				for i := 0; !analyzer.IsReady(); i++ {
+					analyzer.Analyze(traceFromAttributes(nil, randomStringAttributes(bm.attrParams)))
 				}
-				benchStrAttrs = eval.TopAttributes()
+				benchStrAttrs = analyzer.TopAttributes()
 
-				assert.False(b, eval.isSaturated, "eval is saturated")
+				assert.False(b, analyzer.isSaturated, "analyzer is saturated")
 				require.Equal(b, bm.numAttrs, len(benchStrAttrs), "length does not match")
 			}
 		})
@@ -429,8 +583,13 @@ func randomStringAttributesParams(n int) []stringAttributeParams {
 	return params
 }
 
-func traceWithRandomStringAttributes(params []stringAttributeParams) *tempopb.Trace {
-	var attrs []*v1common.KeyValue
+func randomStringAttributes(params []stringAttributeParams) []*v1.KeyValue {
+	// preallocate attribute data in order to avoid allocations during benchmark
+	attrAlloc := make([]v1.KeyValue, len(params))
+	valAlloc := make([]v1.AnyValue, len(attrAlloc))
+	strValAlloc := make([]v1.AnyValue_StringValue, len(attrAlloc))
+
+	attrs := make([]*v1.KeyValue, 0, len(params))
 	for _, p := range params {
 		if t := rnd.Float64(); t >= p.incidence {
 			continue
@@ -440,20 +599,50 @@ func traceWithRandomStringAttributes(params []stringAttributeParams) *tempopb.Tr
 		weightMod := weightVar/2 - (rnd.Float64() * weightVar)
 		weight := p.weight + int32(weightMod)
 
-		attrs = append(attrs, attr(p.name, randomString(int(weight))))
+		strVal := strValAlloc[len(attrs)]
+		strVal.StringValue = randomString(int(weight))
+
+		val := valAlloc[len(attrs)]
+		val.Value = &strVal
+
+		a := attrAlloc[len(attrs)]
+		a.Key = p.name
+		a.Value = &val
+
+		attrs = append(attrs, &a)
 	}
+
 	rnd.Shuffle(len(attrs), func(i, j int) { attrs[i], attrs[j] = attrs[j], attrs[i] })
+	return attrs
+}
 
-	var spans []*v1trace.Span
-	for i := 0; i < len(attrs); i += 10 {
-		spans = append(spans, &v1trace.Span{Attributes: attrs[i:min(i+10, len(attrs))]})
+func traceFromAttributes(resourceAttrs, spanAttrs []*v1.KeyValue) *tempopb.Trace {
+	// preallocate trace data in order to avoid allocations during benchmark
+	spanAlloc := make([]trace_v1.Span, len(spanAttrs)/10+1)
+	batchAlloc := make([]trace_v1.ResourceSpans, len(resourceAttrs)/10+1)
+	resAlloc := make([]res_v1.Resource, len(batchAlloc))
+	ssAlloc := make([]trace_v1.ScopeSpans, len(batchAlloc))
+
+	batches := make([]*trace_v1.ResourceSpans, 0, len(batchAlloc))
+	for i := 0; i < len(batchAlloc); i++ {
+		batch := batchAlloc[i]
+		batch.Resource = &resAlloc[i]
+		batch.Resource.Attributes = resourceAttrs[i*10 : min((i+1)*10, len(resourceAttrs))]
+
+		spans := make([]*trace_v1.Span, 0, 10)
+		for j := 0; j < len(spanAlloc); j++ {
+			span := spanAlloc[j]
+			span.Attributes = spanAttrs[j*10 : min((j+1)*10, len(spanAttrs))]
+			spans = append(spans, &span)
+		}
+
+		ss := ssAlloc[i]
+		ss.Spans = spans
+		batch.ScopeSpans = []*trace_v1.ScopeSpans{&ss}
+		batches = append(batches, &batch)
 	}
 
-	return &tempopb.Trace{
-		Batches: []*v1trace.ResourceSpans{
-			{ScopeSpans: []*v1trace.ScopeSpans{{Spans: spans}}},
-		},
-	}
+	return &tempopb.Trace{Batches: batches}
 }
 
 var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
@@ -466,19 +655,19 @@ func randomString(n int) string {
 	return string(b)
 }
 
-func attr(name string, value any) *v1common.KeyValue {
-	var v *v1common.AnyValue
+func attr(name string, value any) *v1.KeyValue {
+	var v *v1.AnyValue
 
 	switch value := value.(type) {
 	case string:
-		v = &v1common.AnyValue{Value: &v1common.AnyValue_StringValue{StringValue: value}}
+		v = &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: value}}
 	case int:
-		v = &v1common.AnyValue{Value: &v1common.AnyValue_IntValue{IntValue: int64(value)}}
+		v = &v1.AnyValue{Value: &v1.AnyValue_IntValue{IntValue: int64(value)}}
 	default:
 		panic(fmt.Sprintf("unsupported value type %T", value))
 	}
 
-	return &v1common.KeyValue{Key: name, Value: v}
+	return &v1.KeyValue{Key: name, Value: v}
 }
 
 func newParquetIterator(blockPath string) (*parquetIterator, error) {
