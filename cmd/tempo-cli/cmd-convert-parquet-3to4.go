@@ -366,10 +366,10 @@ func vparquetEvent3to4(event *vparquet3.Event, v4event *vparquet4.Event, startTi
 			}
 			vparquet4.AttrToParquet(&v1.KeyValue{Key: attr.Key, Value: &val}, &v4attr, v4event)
 
-			if v4event.Name == "" && v4attr.Key == "event" && v4attr.ValueType == attrTypeString && len(v4attr.Value) == 1 {
-				v4event.Name = v4attr.Value[0]
-				continue
-			}
+			//if v4event.Name == "" && v4attr.Key == "event" && v4attr.ValueType == attrTypeString && len(v4attr.Value) == 1 {
+			//	v4event.Name = v4attr.Value[0]
+			//	continue
+			//}
 
 			v4event.Attrs = append(v4event.Attrs, v4attr)
 		}
