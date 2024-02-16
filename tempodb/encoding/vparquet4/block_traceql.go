@@ -818,6 +818,7 @@ func (i *rebatchIterator) Next() (*parquetquery.IteratorResult, error) {
 				sp.cbSpanset.StartTimeUnixNanos = ss.StartTimeUnixNanos
 			}
 			if len(sp.cbSpanset.ServiceStats) == 0 {
+				sp.cbSpanset.ServiceStats = map[string]traceql.ServiceStats{}
 				for service, stat := range ss.ServiceStats {
 					sp.cbSpanset.ServiceStats[service] = traceql.ServiceStats{
 						SpanCount:  stat.SpanCount,
