@@ -269,7 +269,7 @@ func TestAssignNestedSetModelBounds(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trace := makeTrace(tt.trace)
 			expected := makeTrace(tt.expected)
-			connected := assignNestedSetModelBounds(trace)
+			connected := assignNestedSetModelBoundsAndServiceStats(trace)
 			assertEqualNestedSetModelBounds(t, trace, expected)
 			assert.Equal(t, tt.expectedConnected, connected)
 		})
