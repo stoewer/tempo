@@ -2,6 +2,7 @@ package traceql
 
 import (
 	"context"
+	"maps"
 )
 
 type Operands []Static
@@ -11,10 +12,6 @@ type Condition struct {
 	Op        Operator
 	Operands  Operands
 }
-
-const (
-	ServiceStatsAttributeName = "ServiceStats"
-)
 
 func SearchMetaConditions() []Condition {
 	return []Condition{
@@ -26,7 +23,7 @@ func SearchMetaConditions() []Condition {
 		{NewIntrinsic(IntrinsicSpanID), OpNone, nil},
 		{NewIntrinsic(IntrinsicSpanStartTime), OpNone, nil},
 		{NewIntrinsic(IntrinsicDuration), OpNone, nil},
-		{Attribute{Scope: AttributeScopeTrace, Name: ServiceStatsAttributeName}, OpNone, nil},
+		{NewIntrinsic(IntrinsicServiceStats), OpNone, nil},
 	}
 }
 
@@ -175,6 +172,7 @@ func (s *Spanset) Release() {
 
 func (s *Spanset) clone() *Spanset {
 	ss := *s
+	ss.ServiceStats = maps.Clone(s.ServiceStats)
 	return &ss
 }
 
