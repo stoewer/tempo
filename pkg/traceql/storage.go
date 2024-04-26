@@ -2,7 +2,6 @@ package traceql
 
 import (
 	"context"
-	"maps"
 )
 
 type Operands []Static
@@ -172,7 +171,6 @@ func (s *Spanset) Release() {
 
 func (s *Spanset) clone() *Spanset {
 	ss := *s
-	ss.ServiceStats = maps.Clone(s.ServiceStats)
 	return &ss
 }
 
