@@ -65,7 +65,7 @@ func TestBackendBlockSearchTraceQL(t *testing.T) {
 		}
 
 		id := test.ValidTraceID(nil)
-		tr, _ := traceToParquet(&backend.BlockMeta{}, id, test.MakeTrace(1, id), nil)
+		tr, _ := TraceToParquet(&backend.BlockMeta{}, id, test.MakeTrace(1, id), nil)
 		traces = append(traces, tr)
 	}
 
@@ -412,7 +412,7 @@ func TestBackendBlockSearchTraceQLEvents(t *testing.T) {
 		}
 
 		id := test.ValidTraceID(nil)
-		tr, _ := traceToParquet(&backend.BlockMeta{}, id, test.MakeTrace(1, id), nil)
+		tr, _ := TraceToParquet(&backend.BlockMeta{}, id, test.MakeTrace(1, id), nil)
 		traces = append(traces, tr)
 	}
 
@@ -709,7 +709,7 @@ func TestBackendBlockSelectAll(t *testing.T) {
 		}
 
 		id := test.ValidTraceID(nil)
-		tr, _ := traceToParquet(&backend.BlockMeta{}, id, test.MakeTrace(1, id), nil)
+		tr, _ := TraceToParquet(&backend.BlockMeta{}, id, test.MakeTrace(1, id), nil)
 		traces = append(traces, tr)
 	}
 
