@@ -337,9 +337,9 @@ func attrToParquetTypeUnsupported(a *v1.KeyValue, p *Attribute) {
 	p.IsArray = false
 }
 
-// traceToParquet converts a tempopb.Trace to this schema's object model. Returns the new object and
+// TraceToParquet converts a tempopb.Trace to this schema's object model. Returns the new object and
 // a bool indicating if it's a connected trace or not
-func traceToParquet(meta *backend.BlockMeta, id common.ID, tr *tempopb.Trace, ot *Trace) (*Trace, bool) {
+func TraceToParquet(meta *backend.BlockMeta, id common.ID, tr *tempopb.Trace, ot *Trace) (*Trace, bool) {
 	// Dedicated attribute column assignments
 	dedicatedResourceAttributes := dedicatedColumnsToColumnMapping(meta.DedicatedColumns, backend.DedicatedColumnScopeResource)
 	dedicatedSpanAttributes := dedicatedColumnsToColumnMapping(meta.DedicatedColumns, backend.DedicatedColumnScopeSpan)

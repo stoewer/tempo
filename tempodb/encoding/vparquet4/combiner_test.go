@@ -525,10 +525,10 @@ func BenchmarkCombine(b *testing.B) {
 	for _, spanCount := range spanCounts {
 		b.Run("SpanCount:"+humanize.SI(float64(batchCount*spanCount), ""), func(b *testing.B) {
 			id1 := test.ValidTraceID(nil)
-			tr1, _ := traceToParquet(&backend.BlockMeta{}, id1, test.MakeTraceWithSpanCount(batchCount, spanCount, id1), nil)
+			tr1, _ := TraceToParquet(&backend.BlockMeta{}, id1, test.MakeTraceWithSpanCount(batchCount, spanCount, id1), nil)
 
 			id2 := test.ValidTraceID(nil)
-			tr2, _ := traceToParquet(&backend.BlockMeta{}, id2, test.MakeTraceWithSpanCount(batchCount, spanCount, id2), nil)
+			tr2, _ := TraceToParquet(&backend.BlockMeta{}, id2, test.MakeTraceWithSpanCount(batchCount, spanCount, id2), nil)
 
 			b.ResetTimer()
 
@@ -551,7 +551,7 @@ func BenchmarkSortTrace(b *testing.B) {
 	for _, spanCount := range spanCounts {
 		b.Run("SpanCount:"+humanize.SI(float64(batchCount*spanCount), ""), func(b *testing.B) {
 			id := test.ValidTraceID(nil)
-			tr, _ := traceToParquet(&backend.BlockMeta{}, id, test.MakeTraceWithSpanCount(batchCount, spanCount, id), nil)
+			tr, _ := TraceToParquet(&backend.BlockMeta{}, id, test.MakeTraceWithSpanCount(batchCount, spanCount, id), nil)
 
 			b.ResetTimer()
 
