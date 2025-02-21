@@ -545,10 +545,19 @@ func (w *writerFileView) Root() *Column {
 
 func (w *writerFileView) RowGroups() []RowGroup {
 	if w.writer.fileMetaData != nil {
-		columns := makeLeafColumns(w.Root())
-		file := &File{metadata: *w.writer.fileMetaData, schema: w.schema}
-		fileRowGroups := makeFileRowGroups(file, columns)
-		return makeRowGroups(fileRowGroups)
+		root := w.Root()
+		columns := make([]*Column, 0, numLeafColumnsOf(root))
+		root.forEachLeaf(func(c *Column) { columns = append(columns, c) })
+
+		fileRowGroups := make([]fileRowGroup, len(w.writer.fileMetaData.RowGroups))
+		for i := range fileRowGroups {
+			fileRowGroups[i].init(nil, w.schema, columns, &w.writer.fileMetaData.RowGroups[i])
+		}
+		rowGroups := make([]RowGroup, len(fileRowGroups))
+		for i := range fileRowGroups {
+			rowGroups[i] = &fileRowGroups[i]
+		}
+		return rowGroups
 	}
 	return nil
 }

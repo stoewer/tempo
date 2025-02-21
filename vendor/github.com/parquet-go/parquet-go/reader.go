@@ -638,34 +638,20 @@ func (r *readerFileView) Root() *Column {
 }
 
 func (r *readerFileView) RowGroups() []RowGroup {
-	file := r.reader.file
-	if file == nil {
-		return nil
-	}
-	columns := makeLeafColumns(r.Root())
-	fileRowGroups := makeFileRowGroups(file, columns)
-	return makeRowGroups(fileRowGroups)
-}
+	if meta := r.Metadata(); meta != nil {
+		root := r.Root()
+		columns := make([]*Column, 0, numLeafColumnsOf(root))
+		root.forEachLeaf(func(c *Column) { columns = append(columns, c) })
 
-func makeLeafColumns(root *Column) []*Column {
-	columns := make([]*Column, 0, numLeafColumnsOf(root))
-	root.forEachLeaf(func(c *Column) { columns = append(columns, c) })
-	return columns
-}
-
-func makeFileRowGroups(file *File, columns []*Column) []FileRowGroup {
-	rowGroups := file.metadata.RowGroups
-	fileRowGroups := make([]FileRowGroup, len(rowGroups))
-	for i := range fileRowGroups {
-		fileRowGroups[i].init(file, columns, &rowGroups[i])
+		fileRowGroups := make([]fileRowGroup, len(meta.RowGroups))
+		for i := range fileRowGroups {
+			fileRowGroups[i].init(nil, r.schema, columns, &meta.RowGroups[i])
+		}
+		rowGroups := make([]RowGroup, len(fileRowGroups))
+		for i := range fileRowGroups {
+			rowGroups[i] = &fileRowGroups[i]
+		}
+		return rowGroups
 	}
-	return fileRowGroups
-}
-
-func makeRowGroups(fileRowGroups []FileRowGroup) []RowGroup {
-	rowGroups := make([]RowGroup, len(fileRowGroups))
-	for i := range fileRowGroups {
-		rowGroups[i] = &fileRowGroups[i]
-	}
-	return rowGroups
+	return nil
 }

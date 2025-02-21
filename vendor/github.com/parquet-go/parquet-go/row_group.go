@@ -61,8 +61,9 @@ type RowGroup interface {
 //
 // After calling Close, all attempts to read more rows will return io.EOF.
 type Rows interface {
-	RowReadSeekCloser
-	Schema() *Schema
+	RowReaderWithSchema
+	RowSeeker
+	io.Closer
 }
 
 // RowGroupReader is an interface implemented by types that expose sequences of
@@ -165,29 +166,33 @@ func (r *rowGroup) SortingColumns() []SortingColumn { return r.sorting }
 func (r *rowGroup) Schema() *Schema                 { return r.schema }
 func (r *rowGroup) Rows() Rows                      { return NewRowGroupRowReader(r) }
 
-func AsyncRowGroup(base RowGroup) RowGroup {
-	columnChunks := base.ColumnChunks()
-	asyncRowGroup := &rowGroup{
-		schema:  base.Schema(),
-		numRows: base.NumRows(),
-		sorting: base.SortingColumns(),
-		columns: make([]ColumnChunk, len(columnChunks)),
+func (r *rowGroup) initAsync(rowGroup RowGroup) {
+	basicColumns := rowGroup.ColumnChunks()
+	asyncColumns := make([]asyncColumnChunk, len(basicColumns))
+	finalColumns := make([]ColumnChunk, len(asyncColumns))
+	for i, column := range basicColumns {
+		asyncColumns[i].ColumnChunk = column
+		finalColumns[i] = &asyncColumns[i]
 	}
-	asyncColumnChunks := make([]asyncColumnChunk, len(columnChunks))
-	for i, columnChunk := range columnChunks {
-		asyncColumnChunks[i].ColumnChunk = columnChunk
-		asyncRowGroup.columns[i] = &asyncColumnChunks[i]
-	}
-	return asyncRowGroup
+	r.columns = finalColumns
+	r.sorting = rowGroup.SortingColumns()
+	r.numRows = rowGroup.NumRows()
+	r.schema = rowGroup.Schema()
+}
+
+func AsyncRowGroup(baseRowGroup RowGroup) RowGroup {
+	r := new(rowGroup)
+	r.initAsync(baseRowGroup)
+	return r
 }
 
 type rowGroupRows struct {
-	schema   *Schema
-	bufsize  int
-	buffers  []Value
-	columns  []columnChunkRows
-	closed   bool
-	rowIndex int64
+	schema  *Schema
+	bufsize int
+	buffers []Value
+	columns []columnChunkRows
+	closed  bool
+	done    chan<- struct{}
 }
 
 type columnChunkRows struct {
@@ -209,11 +214,10 @@ func NewRowGroupRowReader(rowGroup RowGroup) Rows {
 
 func newRowGroupRows(schema *Schema, columns []ColumnChunk, bufferSize int) *rowGroupRows {
 	r := &rowGroupRows{
-		schema:   schema,
-		bufsize:  bufferSize,
-		buffers:  make([]Value, len(columns)*bufferSize),
-		columns:  make([]columnChunkRows, len(columns)),
-		rowIndex: -1,
+		schema:  schema,
+		bufsize: bufferSize,
+		buffers: make([]Value, len(columns)*bufferSize),
+		columns: make([]columnChunkRows, len(columns)),
 	}
 
 	for i, column := range columns {
@@ -253,6 +257,10 @@ func (r *rowGroupRows) Reset() {
 }
 
 func (r *rowGroupRows) Close() error {
+	if r.done != nil {
+		close(r.done)
+		r.done = nil
+	}
 	var errs []error
 	for i := range r.columns {
 		c := &r.columns[i]
@@ -271,16 +279,15 @@ func (r *rowGroupRows) SeekToRow(rowIndex int64) error {
 	if r.closed {
 		return io.ErrClosedPipe
 	}
-	if rowIndex != r.rowIndex {
-		for i := range r.columns {
-			if err := r.columns[i].reader.SeekToRow(rowIndex); err != nil {
-				return err
-			}
+	var errs []error
+	for i := range r.columns {
+		c := &r.columns[i]
+		if err := c.reader.SeekToRow(rowIndex); err != nil {
+			errs = append(errs, err)
 		}
-		r.clear()
-		r.rowIndex = rowIndex
 	}
-	return nil
+	r.clear()
+	return errors.Join(errs...)
 }
 
 func (r *rowGroupRows) ReadRows(rows []Row) (int, error) {
@@ -290,17 +297,6 @@ func (r *rowGroupRows) ReadRows(rows []Row) (int, error) {
 
 	for rowIndex := range rows {
 		rows[rowIndex] = rows[rowIndex][:0]
-	}
-
-	// When this is the first call to ReadRows, we issue a seek to the first row
-	// because this starts prefetching pages asynchronously on columns.
-	//
-	// This condition does not apply if SeekToRow was called before ReadRows,
-	// only when ReadRows is the very first method called on the row reader.
-	if r.rowIndex < 0 {
-		if err := r.SeekToRow(0); err != nil {
-			return 0, err
-		}
 	}
 
 	eofCount := 0
@@ -354,12 +350,11 @@ readColumnValues:
 		}
 	}
 
-	var err error
 	if eofCount > 0 {
-		err = io.EOF
+		return rowCount, io.EOF
 	}
-	r.rowIndex += int64(rowCount)
-	return rowCount, err
+
+	return rowCount, nil
 }
 
 func (r *rowGroupRows) Schema() *Schema {
