@@ -7,6 +7,8 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/grafana/tempo/pkg/util"
+
 	"github.com/google/uuid"
 	"github.com/parquet-go/parquet-go"
 	"github.com/stretchr/testify/assert"
@@ -172,8 +174,8 @@ func BenchmarkFindTraceByID(b *testing.B) {
 	var (
 		ctx      = context.TODO()
 		tenantID = "1"
-		blockID  = uuid.MustParse("06ebd383-8d4e-4289-b0e9-cf2197d611d5")
-		path     = "/Users/marty/src/tmp/"
+		blockID  = uuid.MustParse("782b8848-61dc-4618-aa35-67a9bf527489")
+		path     = "/home/astoewer/Develop/tempo/bench-data/blocks/vp4"
 	)
 
 	r, _, _, err := local.New(&local.Config{
@@ -182,24 +184,36 @@ func BenchmarkFindTraceByID(b *testing.B) {
 	require.NoError(b, err)
 
 	rr := backend.NewReader(r)
-	// ww := backend.NewWriter(w)
 
 	meta, err := rr.BlockMeta(ctx, blockID, tenantID)
 	require.NoError(b, err)
 
-	traceID := []byte{}
+	traceIDs := []string{
+		"1009d20f3b553",
+		"452d994356711",
+		"1240aef94269c82b",
+		"4385f3b04b9789ab",
+		"c081117606e97b2ed8d8fc04297760d9",
+		"62a76b52b6cf352473f3f10fb8cfc8e5",
+		"3735077ed900a2369ab112e9afd3afd8",
+		"178a61f7e0106a231227df793f528c76",
+		"cfdfd178b7fd954845ffff2878246a2",
+		"178b466976c65e0b",
+	}
+	traceIDsBytes := make([][]byte, len(traceIDs))
+	for i, id := range traceIDs {
+		traceIDsBytes[i], err = util.HexStringToTraceID(id)
+		require.NoError(b, err)
+	}
 	block := newBackendBlock(meta, rr)
-
-	// index := genIndex(b, block)
-	// writeBlockMeta(ctx, ww, meta, &common.ShardedBloomFilter{}, index)
 
 	for _, tc := range []string{"0", EnvVarIndexEnabledValue} {
 		b.Run(EnvVarIndexName+"="+tc, func(b *testing.B) {
 			os.Setenv(EnvVarIndexName, tc)
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
-				tr, err := block.FindTraceByID(ctx, traceID, common.DefaultSearchOptions())
+			for i := range b.N {
+				tr, err := block.FindTraceByID(ctx, traceIDsBytes[i%len(traceIDsBytes)], common.DefaultSearchOptions())
 				require.NoError(b, err)
 				require.NotNil(b, tr)
 			}
