@@ -6,9 +6,9 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-var DefaultPool = NewResultPool(10)
+var DefaultPool = NewResultPool[any](10)
 
-type ResultPool struct {
+type ResultPool[T any] struct {
 	pool *sync.Pool
 	cap  int
 }
@@ -16,31 +16,31 @@ type ResultPool struct {
 // NewResultPool creates a pool for reusing IteratorResults. New items are created
 // with the given default capacity.  Using different pools is helpful to keep
 // items of similar sizes together which reduces slice allocations.
-func NewResultPool(defaultCapacity int) *ResultPool {
-	return &ResultPool{
+func NewResultPool[T any](defaultCapacity int) *ResultPool[T] {
+	return &ResultPool[T]{
 		pool: &sync.Pool{},
 		cap:  defaultCapacity,
 	}
 }
 
-func (p *ResultPool) Get() *IteratorResult {
+func (p *ResultPool[T]) Get() *TypedIteratorResult[T] {
 	if x := p.pool.Get(); x != nil {
-		return x.(*IteratorResult)
+		return x.(*TypedIteratorResult[T])
 	}
 
-	return &IteratorResult{
+	return &TypedIteratorResult[T]{
 		Entries: make([]struct {
 			Key   string
 			Value parquet.Value
 		}, 0, p.cap),
 		OtherEntries: make([]struct {
 			Key   string
-			Value any
+			Value T
 		}, 0, p.cap),
 	}
 }
 
-func (p *ResultPool) Release(r *IteratorResult) {
+func (p *ResultPool[T]) Release(r *TypedIteratorResult[T]) {
 	r.Reset()
 	p.pool.Put(r)
 }

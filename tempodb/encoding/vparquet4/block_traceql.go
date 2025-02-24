@@ -24,13 +24,13 @@ import (
 )
 
 var (
-	pqSpanPool            = parquetquery.NewResultPool(1)
-	pqSpansetPool         = parquetquery.NewResultPool(1)
-	pqTracePool           = parquetquery.NewResultPool(1)
-	pqAttrPool            = parquetquery.NewResultPool(1)
-	pqEventPool           = parquetquery.NewResultPool(1)
-	pqLinkPool            = parquetquery.NewResultPool(1)
-	pqInstrumentationPool = parquetquery.NewResultPool(1)
+	pqSpanPool            = parquetquery.NewResultPool[any](1)
+	pqSpansetPool         = parquetquery.NewResultPool[any](1)
+	pqTracePool           = parquetquery.NewResultPool[any](1)
+	pqAttrPool            = parquetquery.NewResultPool[any](1)
+	pqEventPool           = parquetquery.NewResultPool[any](1)
+	pqLinkPool            = parquetquery.NewResultPool[any](1)
+	pqInstrumentationPool = parquetquery.NewResultPool[any](1)
 )
 
 type attrVal struct {

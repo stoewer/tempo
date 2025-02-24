@@ -749,13 +749,13 @@ type LeftJoinIteratorOption interface {
 }
 
 type PoolOption struct {
-	pool *ResultPool
+	pool *ResultPool[any]
 }
 
 // WithPool allows setting a custom result pool for this iterator. Custom pooling
 // can be useful to keep similar sized results together or to isolate data. By
 // default all iterators use a shared pool.
-func WithPool(p *ResultPool) PoolOption {
+func WithPool(p *ResultPool[any]) PoolOption {
 	return PoolOption{p}
 }
 
@@ -1584,7 +1584,7 @@ type JoinIterator struct {
 	iters           []Iterator
 	peeks           []*IteratorResult
 	pred            GroupPredicate
-	pool            *ResultPool
+	pool            *ResultPool[any]
 	at              *IteratorResult
 }
 
@@ -1761,7 +1761,7 @@ type LeftJoinIterator struct {
 	required, optional           []Iterator
 	peeksRequired, peeksOptional []*IteratorResult
 	pred                         GroupPredicate
-	pool                         *ResultPool
+	pool                         *ResultPool[any]
 	at                           *IteratorResult
 }
 
