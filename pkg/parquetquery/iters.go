@@ -740,30 +740,30 @@ func syncIteratorPoolPut(b []pq.Value) {
 	syncIteratorPool.Put(b) // nolint: staticcheck
 }
 
-type JoinIteratorOption[T any] interface {
-	applyToJoinIterator(*JoinIterator[T])
+type JoinIteratorOption[T any, U any] interface {
+	applyToJoinIterator(*JoinIterator[T, U])
 }
 
-type LeftJoinIteratorOption[T any] interface {
-	applyToLeftJoinIterator(*LeftJoinIterator[T])
+type LeftJoinIteratorOption[T any, U any] interface {
+	applyToLeftJoinIterator(*LeftJoinIterator[T, U])
 }
 
-type PoolOption[T any] struct {
+type PoolOption[T any, U any] struct {
 	pool *ResultPool[T]
 }
 
 // WithPool allows setting a custom result pool for this iterator. Custom pooling
 // can be useful to keep similar sized results together or to isolate data. By
 // default all iterators use a shared pool.
-func WithPool[T any](p *ResultPool[T]) PoolOption[T] {
-	return PoolOption[T]{p}
+func WithPool[T any, U any](p *ResultPool[T]) PoolOption[T, U] {
+	return PoolOption[T, U]{p}
 }
 
-func (o PoolOption[T]) applyToJoinIterator(j *JoinIterator[T]) {
+func (o PoolOption[T, U]) applyToJoinIterator(j *JoinIterator[T, U]) {
 	j.pool = o.pool
 }
 
-func (o PoolOption[T]) applyToLeftJoinIterator(j *LeftJoinIterator[T]) {
+func (o PoolOption[T, U]) applyToLeftJoinIterator(j *LeftJoinIterator[T, any]) {
 	j.pool = o.pool
 }
 
@@ -1579,19 +1579,19 @@ func (c *ColumnIterator) storeErr(msg string, err error) {
 // JoinIterator joins two or more iterators for matches at the given definition level.
 // I.e. joining at definitionLevel=0 means that each iterator must produce a result
 // within the same root node.
-type JoinIterator[T any] struct {
+type JoinIterator[T any, U any] struct {
 	definitionLevel int
-	iters           []TypedIterator[T]
-	peeks           []*TypedIteratorResult[T]
+	iters           []TypedIterator[U]
+	peeks           []*TypedIteratorResult[U]
 	pred            TypedGroupPredicate[T]
 	pool            *ResultPool[T]
 	at              *TypedIteratorResult[T]
 }
 
-var _ Iterator = (*JoinIterator[any])(nil)
+var _ Iterator = (*JoinIterator[any, any])(nil)
 
-func NewJoinIterator(definitionLevel int, iters []Iterator, pred GroupPredicate, opts ...JoinIteratorOption[any]) *JoinIterator[any] {
-	j := &JoinIterator[any]{
+func NewJoinIterator(definitionLevel int, iters []Iterator, pred GroupPredicate, opts ...JoinIteratorOption[any, any]) *JoinIterator[any, any] {
+	j := &JoinIterator[any, any]{
 		definitionLevel: definitionLevel,
 		iters:           iters,
 		peeks:           make([]*IteratorResult, len(iters)),
@@ -1608,7 +1608,25 @@ func NewJoinIterator(definitionLevel int, iters []Iterator, pred GroupPredicate,
 	return j
 }
 
-func (j *JoinIterator[T]) String() string {
+func NewTypedJoinIterator[T any, U any](definitionLevel int, iters []TypedIterator[U], pred TypedGroupPredicate[T], opts ...JoinIteratorOption[T, U]) *JoinIterator[T, U] {
+	j := &JoinIterator[T, U]{
+		definitionLevel: definitionLevel,
+		iters:           iters,
+		peeks:           make([]*TypedIteratorResult[U], len(iters)),
+		pred:            pred,
+		pool:            NewResultPool[T](1),
+	}
+
+	for _, opt := range opts {
+		opt.applyToJoinIterator(j)
+	}
+
+	j.at = j.pool.Get()
+
+	return j
+}
+
+func (j *JoinIterator[T, U]) String() string {
 	var iters string
 	for _, iter := range j.iters {
 		iters += "\n\t" + util.TabOut(iter)
@@ -1616,7 +1634,7 @@ func (j *JoinIterator[T]) String() string {
 	return fmt.Sprintf("JoinIterator: %d: %s\t%s)", j.definitionLevel, j.pred, iters)
 }
 
-func (j *JoinIterator[T]) Next() (*TypedIteratorResult[T], error) {
+func (j *JoinIterator[T, U]) Next() (*TypedIteratorResult[T], error) {
 outer:
 	for {
 		// This loop is doing two things:
@@ -1674,7 +1692,7 @@ outer:
 	}
 }
 
-func (j *JoinIterator[T]) SeekTo(t RowNumber, d int) (*TypedIteratorResult[T], error) {
+func (j *JoinIterator[T, U]) SeekTo(t RowNumber, d int) (*TypedIteratorResult[T], error) {
 	err := j.seekAll(t, d)
 	if err != nil {
 		return nil, fmt.Errorf("join iterator seekAll failed: %w", err)
@@ -1682,7 +1700,7 @@ func (j *JoinIterator[T]) SeekTo(t RowNumber, d int) (*TypedIteratorResult[T], e
 	return j.Next()
 }
 
-func (j *JoinIterator[T]) seek(iterNum int, t RowNumber, d int) error {
+func (j *JoinIterator[T, U]) seek(iterNum int, t RowNumber, d int) error {
 	var err error
 	t = TruncateRowNumber(d, t)
 	if j.peeks[iterNum] == nil || CompareRowNumbers(d, j.peeks[iterNum].RowNumber, t) == -1 {
@@ -1694,7 +1712,7 @@ func (j *JoinIterator[T]) seek(iterNum int, t RowNumber, d int) error {
 	return nil
 }
 
-func (j *JoinIterator[T]) seekAll(t RowNumber, d int) error {
+func (j *JoinIterator[T, U]) seekAll(t RowNumber, d int) error {
 	var err error
 	t = TruncateRowNumber(d, t)
 	for iterNum, iter := range j.iters {
@@ -1712,7 +1730,7 @@ func (j *JoinIterator[T]) seekAll(t RowNumber, d int) error {
 	return nil
 }
 
-func (j *JoinIterator[T]) peek(iterNum int) (*TypedIteratorResult[T], error) {
+func (j *JoinIterator[T, U]) peek(iterNum int) (*TypedIteratorResult[U], error) {
 	var err error
 	if j.peeks[iterNum] == nil {
 		j.peeks[iterNum], err = j.iters[iterNum].Next()
@@ -1726,7 +1744,7 @@ func (j *JoinIterator[T]) peek(iterNum int) (*TypedIteratorResult[T], error) {
 // Collect data from the given iterators until they point at
 // the next row (according to the configured definition level)
 // or are exhausted.
-func (j *JoinIterator[T]) collect(rowNumber RowNumber) (*TypedIteratorResult[T], error) {
+func (j *JoinIterator[T, U]) collect(rowNumber RowNumber) (*TypedIteratorResult[T], error) {
 	var err error
 
 	result := j.at
@@ -1735,7 +1753,9 @@ func (j *JoinIterator[T]) collect(rowNumber RowNumber) (*TypedIteratorResult[T],
 
 	for i := range j.iters {
 		for j.peeks[i] != nil && EqualRowNumber(j.definitionLevel, j.peeks[i].RowNumber, rowNumber) {
-			result.Append(j.peeks[i])
+			// result.Append(j.peeks[i])
+			// TODO is this even correct for all cases?
+			result.Entries = append(result.Entries, j.peeks[i].Entries...)
 			j.peeks[i], err = j.iters[i].Next()
 			if err != nil {
 				return nil, err
@@ -1745,7 +1765,7 @@ func (j *JoinIterator[T]) collect(rowNumber RowNumber) (*TypedIteratorResult[T],
 	return result, nil
 }
 
-func (j *JoinIterator[T]) Close() {
+func (j *JoinIterator[T, U]) Close() {
 	for _, i := range j.iters {
 		i.Close()
 	}
@@ -1756,18 +1776,18 @@ func (j *JoinIterator[T]) Close() {
 // The first set of required iterators must all produce matching results. The second set
 // of optional iterators are collected if they also match.
 // TODO - This should technically obsolete the JoinIterator.
-type LeftJoinIterator[T any] struct {
+type LeftJoinIterator[T any, U any] struct {
 	definitionLevel              int
-	required, optional           []TypedIterator[T]
-	peeksRequired, peeksOptional []*TypedIteratorResult[T]
+	required, optional           []TypedIterator[U]
+	peeksRequired, peeksOptional []*TypedIteratorResult[U]
 	pred                         TypedGroupPredicate[T]
 	pool                         *ResultPool[T]
 	at                           *TypedIteratorResult[T]
 }
 
-var _ Iterator = (*LeftJoinIterator[any])(nil)
+var _ Iterator = (*LeftJoinIterator[any, any])(nil)
 
-func NewLeftJoinIterator(definitionLevel int, required, optional []Iterator, pred GroupPredicate, opts ...LeftJoinIteratorOption[any]) (*LeftJoinIterator[any], error) {
+func NewLeftJoinIterator(definitionLevel int, required, optional []Iterator, pred GroupPredicate, opts ...LeftJoinIteratorOption[any, any]) (*LeftJoinIterator[any, any], error) {
 	// No query should ever result in a left-join with no required iterators.
 	// If this happens, it's a bug in the iter building code.
 	// LeftJoinIterator is not designed to handle this case and will loop forever.
@@ -1775,7 +1795,7 @@ func NewLeftJoinIterator(definitionLevel int, required, optional []Iterator, pre
 		return nil, fmt.Errorf("left join iterator requires at least one required iterator")
 	}
 
-	j := &LeftJoinIterator[any]{
+	j := &LeftJoinIterator[any, any]{
 		definitionLevel: definitionLevel,
 		required:        required,
 		optional:        optional,
@@ -1794,7 +1814,7 @@ func NewLeftJoinIterator(definitionLevel int, required, optional []Iterator, pre
 	return j, nil
 }
 
-func NewTypedLeftJoinIterator[T any](definitionLevel int, required, optional []TypedIterator[T], pred TypedGroupPredicate[T], opts ...LeftJoinIteratorOption[T]) (*LeftJoinIterator[T], error) {
+func NewTypedLeftJoinIterator[T any, U any](definitionLevel int, required, optional []TypedIterator[U], pred TypedGroupPredicate[T], opts ...LeftJoinIteratorOption[T, U]) (*LeftJoinIterator[T, U], error) {
 	// No query should ever result in a left-join with no required iterators.
 	// If this happens, it's a bug in the iter building code.
 	// LeftJoinIterator is not designed to handle this case and will loop forever.
@@ -1802,12 +1822,12 @@ func NewTypedLeftJoinIterator[T any](definitionLevel int, required, optional []T
 		return nil, fmt.Errorf("left join iterator requires at least one required iterator")
 	}
 
-	j := &LeftJoinIterator[T]{
+	j := &LeftJoinIterator[T, U]{
 		definitionLevel: definitionLevel,
 		required:        required,
 		optional:        optional,
-		peeksRequired:   make([]*TypedIteratorResult[T], len(required)),
-		peeksOptional:   make([]*TypedIteratorResult[T], len(optional)),
+		peeksRequired:   make([]*TypedIteratorResult[U], len(required)),
+		peeksOptional:   make([]*TypedIteratorResult[U], len(optional)),
 		pred:            pred,
 		pool:            NewResultPool[T](1),
 	}
@@ -1821,7 +1841,7 @@ func NewTypedLeftJoinIterator[T any](definitionLevel int, required, optional []T
 	return j, nil
 }
 
-func (j *LeftJoinIterator[T]) String() string {
+func (j *LeftJoinIterator[T, U]) String() string {
 	srequired := "required: "
 	for _, r := range j.required {
 		srequired += "\n\t" + util.TabOut(r)
@@ -1833,7 +1853,7 @@ func (j *LeftJoinIterator[T]) String() string {
 	return fmt.Sprintf("LeftJoinIterator: %d: %s\n%s\n%s", j.definitionLevel, j.pred, srequired, soptional)
 }
 
-func (j *LeftJoinIterator[T]) Next() (*TypedIteratorResult[T], error) {
+func (j *LeftJoinIterator[T, U]) Next() (*TypedIteratorResult[T], error) {
 outer:
 	for {
 		// This loop is doing two things:
@@ -1892,7 +1912,7 @@ outer:
 	}
 }
 
-func (j *LeftJoinIterator[T]) SeekTo(t RowNumber, d int) (*TypedIteratorResult[T], error) {
+func (j *LeftJoinIterator[T, U]) SeekTo(t RowNumber, d int) (*TypedIteratorResult[T], error) {
 	err := j.seekAll(t, d)
 	if err != nil {
 		return nil, err
@@ -1901,7 +1921,7 @@ func (j *LeftJoinIterator[T]) SeekTo(t RowNumber, d int) (*TypedIteratorResult[T
 	return j.Next()
 }
 
-func (j *LeftJoinIterator[T]) seek(iterNum int, t RowNumber, d int) (err error) {
+func (j *LeftJoinIterator[T, U]) seek(iterNum int, t RowNumber, d int) (err error) {
 	t = TruncateRowNumber(d, t)
 	if j.peeksRequired[iterNum] == nil || CompareRowNumbers(d, j.peeksRequired[iterNum].RowNumber, t) == -1 {
 		j.peeksRequired[iterNum], err = j.required[iterNum].SeekTo(t, d)
@@ -1912,7 +1932,7 @@ func (j *LeftJoinIterator[T]) seek(iterNum int, t RowNumber, d int) (err error) 
 	return nil
 }
 
-func (j *LeftJoinIterator[T]) seekAll(t RowNumber, d int) (err error) {
+func (j *LeftJoinIterator[T, U]) seekAll(t RowNumber, d int) (err error) {
 	t = TruncateRowNumber(d, t)
 	for iterNum, iter := range j.required {
 		if j.peeksRequired[iterNum] == nil || CompareRowNumbers(d, j.peeksRequired[iterNum].RowNumber, t) == -1 {
@@ -1937,7 +1957,7 @@ func (j *LeftJoinIterator[T]) seekAll(t RowNumber, d int) (err error) {
 	return nil
 }
 
-func (j *LeftJoinIterator[T]) peek(iterNum int) (*TypedIteratorResult[T], error) {
+func (j *LeftJoinIterator[T, U]) peek(iterNum int) (*TypedIteratorResult[U], error) {
 	var err error
 	if j.peeksRequired[iterNum] == nil {
 		j.peeksRequired[iterNum], err = j.required[iterNum].Next()
@@ -1951,18 +1971,20 @@ func (j *LeftJoinIterator[T]) peek(iterNum int) (*TypedIteratorResult[T], error)
 // Collect data from the given iterators until they point at
 // the next row (according to the configured definition level)
 // or are exhausted.
-func (j *LeftJoinIterator[T]) collect(rowNumber RowNumber) (*TypedIteratorResult[T], error) {
+func (j *LeftJoinIterator[T, U]) collect(rowNumber RowNumber) (*TypedIteratorResult[T], error) {
 	var err error
 
 	result := j.at
 	result.Reset()
 	result.RowNumber = rowNumber
 
-	collect := func(iters []TypedIterator[T], peeks []*TypedIteratorResult[T]) {
+	collect := func(iters []TypedIterator[U], peeks []*TypedIteratorResult[U]) {
 		for i := range iters {
 			// Collect matches
 			for peeks[i] != nil && EqualRowNumber(j.definitionLevel, peeks[i].RowNumber, rowNumber) {
-				result.Append(peeks[i])
+				// result.Append(peeks[i])
+				// TODO is this even correct for all cases?
+				result.Entries = append(result.Entries, peeks[i].Entries...)
 				// peeks[i].Release()
 				peeks[i], err = iters[i].Next()
 				if err != nil {
@@ -1990,7 +2012,7 @@ func (j *LeftJoinIterator[T]) collect(rowNumber RowNumber) (*TypedIteratorResult
 	return result, nil
 }
 
-func (j *LeftJoinIterator[T]) Close() {
+func (j *LeftJoinIterator[T, U]) Close() {
 	for _, i := range j.required {
 		i.Close()
 	}
