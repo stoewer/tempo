@@ -1727,7 +1727,7 @@ func createSpanIterator(makeIter makeIterFn, primaryIter parquetquery.Iterator, 
 
 	// Left join here means the span id/start/end iterators + 1 are required,
 	// and all other conditions are optional. Whatever matches is returned.
-	return parquetquery.NewLeftJoinIterator(DefinitionLevelResourceSpansILSSpan, required, iters, spanCol, parquetquery.WithPool(pqSpanPool))
+	return parquetquery.NewLeftJoinIterator(DefinitionLevelResourceSpansILSSpan, required, iters, spanCol, parquetquery.WithPool[any, any](pqSpanPool))
 }
 
 // createResourceIterator iterates through all resourcespans-level (batch-level) columns, groups them into rows representing
@@ -1849,7 +1849,7 @@ func createResourceIterator(makeIter makeIterFn, spanIterator parquetquery.Itera
 	// Left join here means the span iterator + 1 are required,
 	// and all other resource conditions are optional. Whatever matches
 	// is returned.
-	return parquetquery.NewLeftJoinIterator(DefinitionLevelResourceSpans, required, iters, batchCol, parquetquery.WithPool(pqSpansetPool))
+	return parquetquery.NewLeftJoinIterator(DefinitionLevelResourceSpans, required, iters, batchCol, parquetquery.WithPool[any, any](pqSpansetPool))
 }
 
 func createTraceIterator(makeIter makeIterFn, resourceIter parquetquery.Iterator, conds []traceql.Condition, start, end uint64, allConditions bool, selectAll bool) (parquetquery.Iterator, error) {
@@ -1936,7 +1936,7 @@ func createTraceIterator(makeIter makeIterFn, resourceIter parquetquery.Iterator
 	// Final trace iterator
 	// Join iterator means it requires matching resources to have been found
 	// TraceCollor adds trace-level data to the spansets
-	return parquetquery.NewLeftJoinIterator(DefinitionLevelTrace, required, iters, newTraceCollector(), parquetquery.WithPool(pqTracePool))
+	return parquetquery.NewLeftJoinIterator(DefinitionLevelTrace, required, iters, newTraceCollector(), parquetquery.WithPool[any, any](pqTracePool))
 }
 
 func createPredicate(op traceql.Operator, operands traceql.Operands) (parquetquery.Predicate, error) {
@@ -2130,7 +2130,7 @@ func createAttributeIterator(makeIter makeIterFn, conditions []traceql.Condition
 				makeIter(boolPath, nil, "bool"),
 			},
 			&attributeCollector{},
-			parquetquery.WithPool(pqAttrPool))
+			parquetquery.WithPool[any, any](pqAttrPool))
 	}
 
 	var (
@@ -2211,14 +2211,14 @@ func createAttributeIterator(makeIter makeIterFn, conditions []traceql.Condition
 			return parquetquery.NewJoinIterator(definitionLevel,
 				iters,
 				&attributeCollector{},
-				parquetquery.WithPool(pqAttrPool)), nil
+				parquetquery.WithPool[any, any](pqAttrPool)), nil
 		}
 
 		return parquetquery.NewLeftJoinIterator(definitionLevel,
 			[]parquetquery.Iterator{makeIter(keyPath, parquetquery.NewStringInPredicate(attrKeys), "key")},
 			valueIters,
 			&attributeCollector{},
-			parquetquery.WithPool(pqAttrPool))
+			parquetquery.WithPool[any, any](pqAttrPool))
 	}
 
 	return nil, nil
