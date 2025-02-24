@@ -2115,10 +2115,12 @@ func (u *UnionIterator) Close() {
 	}
 }
 
-type GroupPredicate interface {
+type GroupPredicate = TypedGroupPredicate[any]
+
+type TypedGroupPredicate[T any] interface {
 	fmt.Stringer
 
-	KeepGroup(*IteratorResult) bool
+	KeepGroup(*TypedIteratorResult[T]) bool
 }
 
 // KeyValueGroupPredicate takes key/value pairs and checks if the
