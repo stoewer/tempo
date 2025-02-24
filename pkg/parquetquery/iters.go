@@ -592,10 +592,12 @@ func (t RowNumber) Preceding() RowNumber {
 	return t
 }
 
+type IteratorResult = TypedIteratorResult[any]
+
 // IteratorResult is a row of data with a row number and named columns of data.
 // Internally it has an unstructured list for efficient collection. The ToMap()
 // function can be used to make inspection easier.
-type IteratorResult struct {
+type TypedIteratorResult[T any] struct {
 	RowNumber RowNumber
 	Entries   []struct {
 		Key   string
@@ -603,47 +605,48 @@ type IteratorResult struct {
 	}
 	OtherEntries []struct {
 		Key   string
-		Value interface{}
+		Value T
 	}
 }
 
-func (r *IteratorResult) Reset() {
+func (r *TypedIteratorResult[T]) Reset() {
 	r.Entries = r.Entries[:0]
 	r.OtherEntries = r.OtherEntries[:0]
 }
 
-func (r *IteratorResult) Append(rr *IteratorResult) {
+func (r *TypedIteratorResult[T]) Append(rr *TypedIteratorResult[T]) {
 	r.Entries = append(r.Entries, rr.Entries...)
 	r.OtherEntries = append(r.OtherEntries, rr.OtherEntries...)
 }
 
-func (r *IteratorResult) AppendValue(k string, v pq.Value) {
+func (r *TypedIteratorResult[T]) AppendValue(k string, v pq.Value) {
 	r.Entries = append(r.Entries, struct {
 		Key   string
 		Value pq.Value
 	}{k, v})
 }
 
-func (r *IteratorResult) AppendOtherValue(k string, v interface{}) {
+func (r *TypedIteratorResult[T]) AppendOtherValue(k string, v T) {
 	r.OtherEntries = append(r.OtherEntries, struct {
 		Key   string
-		Value interface{}
+		Value T
 	}{k, v})
 }
 
-func (r *IteratorResult) OtherValueFromKey(k string) interface{} {
+func (r *TypedIteratorResult[T]) OtherValueFromKey(k string) (T, bool) {
 	for _, e := range r.OtherEntries {
 		if e.Key == k {
-			return e.Value
+			return e.Value, true
 		}
 	}
-	return nil
+	var zero T
+	return zero, false
 }
 
 // ToMap converts the unstructured list of data into a map containing an entry
 // for each column, and the lists of values.  The order of columns is
-// not preseved, but the order of values within each column is.
-func (r *IteratorResult) ToMap() map[string][]pq.Value {
+// not preserved, but the order of values within each column is.
+func (r *TypedIteratorResult[T]) ToMap() map[string][]pq.Value {
 	m := map[string][]pq.Value{}
 	for _, e := range r.Entries {
 		m[e.Key] = append(m[e.Key], e.Value)
@@ -653,7 +656,7 @@ func (r *IteratorResult) ToMap() map[string][]pq.Value {
 
 // Columns gets the values for each named column. The order of returned values
 // matches the order of names given. This is more efficient than converting to a map.
-func (r *IteratorResult) Columns(buffer [][]pq.Value, names ...string) [][]pq.Value {
+func (r *TypedIteratorResult[T]) Columns(buffer [][]pq.Value, names ...string) [][]pq.Value {
 	if cap(buffer) < len(names) {
 		buffer = make([][]pq.Value, len(names))
 	} else {
@@ -674,15 +677,17 @@ func (r *IteratorResult) Columns(buffer [][]pq.Value, names ...string) [][]pq.Va
 	return buffer
 }
 
+type Iterator = TypedIterator[any]
+
 // iterator - Every iterator follows this interface and can be composed.
-type Iterator interface {
+type TypedIterator[T any] interface {
 	fmt.Stringer
 
 	// Next returns nil when done
-	Next() (*IteratorResult, error)
+	Next() (*TypedIteratorResult[T], error)
 
 	// Like Next but skips over results until reading >= the given location
-	SeekTo(t RowNumber, definitionLevel int) (*IteratorResult, error)
+	SeekTo(t RowNumber, definitionLevel int) (*TypedIteratorResult[T], error)
 
 	Close()
 }

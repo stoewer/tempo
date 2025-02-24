@@ -1140,8 +1140,8 @@ func (i *bridgeIterator) Next() (*parquetquery.IteratorResult, error) {
 		}
 
 		// The spanset is in the OtherEntries
-		iface := res.OtherValueFromKey(otherEntrySpansetKey)
-		if iface == nil {
+		iface, ok := res.OtherValueFromKey(otherEntrySpansetKey)
+		if !ok {
 			return nil, fmt.Errorf("engine assumption broken: spanset not found in other entries in bridge")
 		}
 		spanset, ok := iface.(*traceql.Spanset)
@@ -1258,8 +1258,8 @@ func (i *rebatchIterator) Next() (*parquetquery.IteratorResult, error) {
 		}
 
 		// get the spanset and see if we should pass it through or buffer for rebatching
-		iface := res.OtherValueFromKey(otherEntrySpansetKey)
-		if iface == nil {
+		iface, ok := res.OtherValueFromKey(otherEntrySpansetKey)
+		if !ok {
 			return nil, fmt.Errorf("engine assumption broken: spanset not found in other entries in rebatch")
 		}
 		ss, ok := iface.(*traceql.Spanset)
@@ -1372,8 +1372,8 @@ func (i *spansetIterator) Next(context.Context) (*traceql.Spanset, error) {
 	}
 
 	// The spanset is in the OtherEntries
-	iface := res.OtherValueFromKey(otherEntrySpansetKey)
-	if iface == nil {
+	iface, ok := res.OtherValueFromKey(otherEntrySpansetKey)
+	if !ok {
 		return nil, fmt.Errorf("engine assumption broken: spanset not found in other entries in spansetIterator")
 	}
 	ss, ok := iface.(*traceql.Spanset)
