@@ -2,8 +2,6 @@ package parquetquery
 
 import (
 	"context"
-	"math"
-	"math/rand"
 	"os"
 	"strconv"
 	"testing"
@@ -24,126 +22,6 @@ var iterTestCases = []struct {
 	{"sync", func(pf *parquet.File, idx int, filter Predicate, selectAs string) Iterator {
 		return NewSyncIterator(context.TODO(), pf.RowGroups(), idx, selectAs, 1000, filter, selectAs)
 	}},
-}
-
-// TestNext compares the unrolled Next() with the original nextSlow() to
-// prevent drift
-func TestNext(t *testing.T) {
-	rn1 := RowNumber{0, 0, 0, 0, 0, 0, 0, 0}
-	rn2 := RowNumber{0, 0, 0, 0, 0, 0, 0, 0}
-
-	for i := 0; i < 1000; i++ {
-		r := rand.Intn(MaxDefinitionLevel + 1)
-		d := rand.Intn(MaxDefinitionLevel + 1)
-
-		rn1.Next(r, d)
-		rn2.nextSlow(r, d)
-
-		require.Equal(t, rn1, rn2)
-	}
-}
-
-// TestTruncate compares the unrolled TruncateRowNumber() with the original truncateRowNumberSlow() to
-// prevent drift
-func TestTruncateRowNumber(t *testing.T) {
-	for i := 0; i <= MaxDefinitionLevel; i++ {
-		rn := RowNumber{1, 2, 3, 4, 5, 6, 7, 8}
-
-		newR := TruncateRowNumber(i, rn)
-		oldR := truncateRowNumberSlow(i, rn)
-
-		require.Equal(t, newR, oldR)
-	}
-}
-
-func TestInvalidDefinitionLevelTruncate(t *testing.T) {
-	t.Run("TruncateRowNumber -1", func(t *testing.T) {
-		assertPanic(t, func() {
-			rn := RowNumber{1, 2, 3, 4, 5, 6, 7, 8}
-			d := -1
-			TruncateRowNumber(d, rn)
-		})
-	})
-	t.Run("TruncateRowNumber Max+1", func(t *testing.T) {
-		assertPanic(t, func() {
-			rn := RowNumber{1, 2, 3, 4, 5, 6, 7, 8}
-			d := MaxDefinitionLevel + 1
-			TruncateRowNumber(d, rn)
-		})
-	})
-}
-
-func TestInvalidDefinitionLevelNext(t *testing.T) {
-	t.Run("Next -1", func(t *testing.T) {
-		assertPanic(t, func() {
-			rn := RowNumber{1, 2, 3, 4, 5, 6, 7, 8}
-			r := 0
-			d := -1
-			rn.Next(r, d)
-		})
-	})
-	t.Run("Next Max+1", func(t *testing.T) {
-		assertPanic(t, func() {
-			rn := RowNumber{1, 2, 3, 4, 5, 6, 7, 8}
-			r := 0
-			d := MaxDefinitionLevel + 1
-			rn.Next(r, d)
-		})
-	})
-}
-
-func TestRowNumber(t *testing.T) {
-	tr := EmptyRowNumber()
-	require.Equal(t, RowNumber{-1, -1, -1, -1, -1, -1, -1, -1}, tr)
-
-	steps := []struct {
-		repetitionLevel int
-		definitionLevel int
-		expected        RowNumber
-	}{
-		// Name.Language.Country examples from the Dremel whitepaper
-		{0, 3, RowNumber{0, 0, 0, 0, -1, -1, -1, -1}},
-		{2, 2, RowNumber{0, 0, 1, -1, -1, -1, -1, -1}},
-		{1, 1, RowNumber{0, 1, -1, -1, -1, -1, -1, -1}},
-		{1, 3, RowNumber{0, 2, 0, 0, -1, -1, -1, -1}},
-		{0, 1, RowNumber{1, 0, -1, -1, -1, -1, -1, -1}},
-	}
-
-	for _, step := range steps {
-		tr.Next(step.repetitionLevel, step.definitionLevel)
-		require.Equal(t, step.expected, tr)
-	}
-}
-
-func TestCompareRowNumbers(t *testing.T) {
-	testCases := []struct {
-		a, b     RowNumber
-		expected int
-	}{
-		{RowNumber{-1}, RowNumber{0}, -1},
-		{RowNumber{0}, RowNumber{0}, 0},
-		{RowNumber{1}, RowNumber{0}, 1},
-
-		{RowNumber{0, 1}, RowNumber{0, 2}, -1},
-		{RowNumber{0, 2}, RowNumber{0, 1}, 1},
-	}
-
-	for _, tc := range testCases {
-		require.Equal(t, tc.expected, CompareRowNumbers(MaxDefinitionLevel, tc.a, tc.b))
-	}
-}
-
-func TestRowNumberPreceding(t *testing.T) {
-	testCases := []struct {
-		start, preceding RowNumber
-	}{
-		{RowNumber{1000, -1, -1, -1, -1, -1, -1, -1}, RowNumber{999, -1, -1, -1, -1, -1, -1, -1}},
-		{RowNumber{1000, 0, 0, 0, 0, 0, 0, 0}, RowNumber{999, math.MaxInt32, math.MaxInt32, math.MaxInt32, math.MaxInt32, math.MaxInt32, math.MaxInt32, math.MaxInt32}},
-	}
-
-	for _, tc := range testCases {
-		require.Equal(t, tc.preceding, tc.start.Preceding())
-	}
 }
 
 func TestColumnIterator(t *testing.T) {
