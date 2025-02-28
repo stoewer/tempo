@@ -205,6 +205,8 @@ func TestRowNumberPreceding(t *testing.T) {
 	}
 }
 
+var rowNumber RowNumber
+
 func BenchmarkRowNumberNext(b *testing.B) {
 	// Define test cases for various repetition and definition levels.
 	testCases := []struct {
@@ -215,16 +217,16 @@ func BenchmarkRowNumberNext(b *testing.B) {
 	}{
 		{"root level", RowNumber{0, -1, -1, -1, -1, -1, -1, -1}, 0, 3},
 		{"mid level", RowNumber{3, 2, 1, 0, -1, -1, -1, -1}, 2, 4},
-		{"max level", RowNumber{1, 1, 1, 1, 1, 1, 1, 1}, 7, 7},
+		{"max level", RowNumber{1, 1, 1, 1, 1, 1, 1, 1}, 6, 7},
 	}
 
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
-			row := tc.initial
+			rowNumber := tc.initial
 			b.ResetTimer()
 
 			for b.Loop() {
-				row.Next(tc.repLvl, tc.defLvl)
+				rowNumber.nextSlow(tc.repLvl, tc.defLvl)
 			}
 		})
 	}

@@ -118,6 +118,426 @@ func (t *RowNumber) nextSlow(repetitionLevel, definitionLevel int) {
 	}
 }
 
+func (t *RowNumber) nextUnrolled(rep, def int) {
+	t[rep]++
+
+	// the following is nextSlow() unrolled
+	switch rep {
+	case 0:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[1] = 0
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[1] = 0
+			t[2] = 0
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[1] = 0
+			t[2] = 0
+			t[3] = 0
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[1] = 0
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[1] = 0
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[1] = 0
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = -1
+		case 7:
+			t[1] = 0
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = 0
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	case 1:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[2] = 0
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[2] = 0
+			t[3] = 0
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = -1
+		case 7:
+			t[2] = 0
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = 0
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	case 2:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[3] = 0
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[3] = 0
+			t[4] = 0
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = -1
+		case 7:
+			t[3] = 0
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = 0
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	case 3:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[4] = 0
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[4] = 0
+			t[5] = 0
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = -1
+		case 7:
+			t[4] = 0
+			t[5] = 0
+			t[6] = 0
+			t[7] = 0
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	case 4:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[5] = 0
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[5] = 0
+			t[6] = 0
+			t[7] = -1
+		case 7:
+			t[5] = 0
+			t[6] = 0
+			t[7] = 0
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	case 5:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[6] = 0
+			t[7] = -1
+		case 7:
+			t[6] = 0
+			t[7] = 0
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	case 6:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[7] = -1
+		case 7:
+			t[7] = 0
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	case 7:
+		switch def {
+		case 0:
+			t[1] = -1
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 1:
+			t[2] = -1
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 2:
+			t[3] = -1
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 3:
+			t[4] = -1
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 4:
+			t[5] = -1
+			t[6] = -1
+			t[7] = -1
+		case 5:
+			t[6] = -1
+			t[7] = -1
+		case 6:
+			t[7] = -1
+		case 7:
+		default:
+			panicWhenInvalidDefinitionLevel(def)
+		}
+	}
+}
+
 // Skip rows at the root-level.
 func (t *RowNumber) Skip(numRows int64) {
 	t[0] += int32(numRows)
