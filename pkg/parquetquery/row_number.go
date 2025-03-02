@@ -104,6 +104,8 @@ func (t *RowNumber) Next(repetitionLevel, definitionLevel int) {
 
 // nextSlow is the original implementation of next. it is kept to test against
 // the unrolled version above
+//
+//go:noinline
 func (t *RowNumber) nextSlow(repetitionLevel, definitionLevel int) {
 	t[repetitionLevel]++
 

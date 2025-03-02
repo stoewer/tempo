@@ -226,7 +226,7 @@ func BenchmarkRowNumberNext(b *testing.B) {
 			b.ResetTimer()
 
 			for b.Loop() {
-				rowNumber.Next(tc.repLvl, tc.defLvl)
+				rowNumberNext(&rowNumber, tc.repLvl, tc.defLvl)
 			}
 		})
 	}
