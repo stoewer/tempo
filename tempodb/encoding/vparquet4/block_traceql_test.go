@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/grafana/tempo/tempodb/backend"
 	"github.com/grafana/tempo/tempodb/backend/local"
 	"github.com/grafana/tempo/tempodb/encoding/common"
+	"github.com/parquet-go/parquet-go"
 )
 
 func TestCreateIntPredicateFromFloat(t *testing.T) {
@@ -1222,6 +1224,58 @@ func BenchmarkIterators(b *testing.B) {
 	}
 }
 
+func BenchmarkIndexIterators(b *testing.B) {
+	ctx := context.TODO()
+	opts := common.DefaultSearchOptions()
+
+	block := blockForBenchmarks(b)
+
+	pf := openIndexForBenchmark(b, block.meta, opts)
+
+	rgs := pf.RowGroups()
+	rgs = rgs[:]
+
+	var pred *parquetquery.InstrumentedPredicate
+
+	makeIterInternal := makeIterFunc(ctx, rgs, pf)
+	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
+		pred = &parquetquery.InstrumentedPredicate{
+			Pred: predicate,
+		}
+		return makeIterInternal(columnName, predicate, selectAs)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := error(nil)
+
+		iter := makeIter(columnPathSpanAttrKey, parquetquery.NewSubstringPredicate("e"), "foo")
+		require.NoError(b, err)
+
+		count := 0
+		for {
+			res, err := iter.Next()
+			if err != nil {
+				panic(err)
+			}
+			if res == nil {
+				break
+			}
+			count++
+		}
+		iter.Close()
+		if pred != nil {
+			b.ReportMetric(float64(count), "count")
+			b.ReportMetric(float64(pred.InspectedColumnChunks), "stats_cc")
+			b.ReportMetric(float64(pred.KeptColumnChunks), "stats_cc_kept")
+			b.ReportMetric(float64(pred.InspectedPages), "stats_ip")
+			b.ReportMetric(float64(pred.KeptPages), "stats_ip_kept")
+			b.ReportMetric(float64(pred.InspectedValues), "stats_v")
+			b.ReportMetric(float64(pred.KeptValues), "stats_v_kept")
+		}
+	}
+}
+
 func BenchmarkBackendBlockQueryRange(b *testing.B) {
 	testCases := []string{
 		"{} | rate()",
@@ -2177,4 +2231,34 @@ func blockForBenchmarks(b *testing.B) *backendBlock {
 	require.NoError(b, err)
 
 	return newBackendBlock(meta, rr)
+}
+
+func openIndexForBenchmark(b *testing.B, meta *backend.BlockMeta, searchOpts common.SearchOptions) *parquet.File {
+	path, ok := os.LookupEnv("BENCH_PATH")
+	if !ok {
+		b.Fatal("BENCH_PATH is not set. These benchmarks are designed to run against a block on local disk. Set BENCH_PATH to the root of the backend such that the block to benchmark is at <BENCH_PATH>/<BENCH_TENANTID>/<BENCH_BLOCKID>.")
+	}
+
+	indexPath := filepath.Join(path, meta.TenantID, meta.BlockID.String(), "index.parquet")
+	f, err := os.Open(indexPath)
+	require.NoError(b, err)
+
+	stat, err := f.Stat()
+	require.NoError(b, err)
+
+	opts := []parquet.FileOption{
+		parquet.SkipBloomFilters(true),
+		parquet.SkipPageIndex(true),
+		parquet.FileReadMode(parquet.ReadModeAsync),
+	}
+	readBufferSize := searchOpts.ReadBufferSize
+	if readBufferSize <= 0 {
+		readBufferSize = parquet.DefaultFileConfig().ReadBufferSize
+	}
+	opts = append(opts, parquet.ReadBufferSize(readBufferSize))
+
+	pf, err := parquet.OpenFile(f, stat.Size(), opts...)
+	require.NoError(b, err)
+
+	return pf
 }
