@@ -18,7 +18,6 @@ import (
 	"github.com/parquet-go/parquet-go"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/tempo/pkg/parquetquery"
 	pq "github.com/grafana/tempo/pkg/parquetquery"
 	"github.com/grafana/tempo/pkg/tempopb"
 	v1 "github.com/grafana/tempo/pkg/tempopb/trace/v1"
@@ -888,7 +887,7 @@ func TestBackendBlockSelectAll(t *testing.T) {
 			s := sp.(*span)
 			s.cbSpanset = nil
 			s.cbSpansetFinal = false
-			s.rowNum = parquetquery.RowNumber{}
+			s.rowNum = pq.RowNumber{}
 			s.startTimeUnixNanos = 0 // selectall doesn't imply start time
 			sortAttrs(s.traceAttrs)
 			sortAttrs(s.resourceAttrs)
@@ -1060,32 +1059,33 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 		query string
 	}{
 		// span
-		{"spanAttValMatch", "{ span.component = `net/http` }"},
-		{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
-		{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
-		{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
+		//{"spanAttValMatch", "{ span.component = `net/http` }"},
+		//{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
+		//{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
+		//{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
 
 		// resource
-		{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
-		{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
-		{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},
-		{"resourceAttIntrinsicMatch", "{ resource.service.name = `does-not-exit-6c2408325a45` }"},
-
-		// trace
-		{"traceOrMatch", "{ rootServiceName = `tempo-gateway` && (status = error || span.http.status_code = 500)}"},
-		{"traceOrNoMatch", "{ rootServiceName = `doesntexist` && (status = error || span.http.status_code = 500)}"},
-
-		// mixed
-		{"mixedValNoMatch", "{ .bloom = `does-not-exit-6c2408325a45` }"},
-		{"mixedValMixedMatchAnd", "{ resource.foo = `bar` && name = `gcs.ReadRange` }"},
-		{"mixedValMixedMatchOr", "{ resource.foo = `bar` || name = `gcs.ReadRange` }"},
-
-		{"count", "{ } | count() > 1"},
-		{"struct", "{ resource.service.name != `loki-querier` } >> { resource.service.name = `loki-gateway` && status = error }"},
-		{"||", "{ resource.service.name = `loki-querier` } || { resource.service.name = `loki-gateway` }"},
-		{"mixed", `{resource.namespace!="" && resource.service.name="cortex-gateway" && duration>50ms && resource.cluster=~"prod.*"}`},
-		{"complex", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod" && resource.container="query-frontend" && name = "HTTP GET - tempo_api_v2_search_tags" && span.http.status_code = 200 && duration > 1s}`},
-		{"select", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod"} | select(resource.container)`},
+		{"resourceAttValMatch", "{ resource.k8s.cluster.name = `prod-au-southeast-0` }"},
+		//{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
+		//{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
+		//{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},
+		//{"resourceAttIntrinsicMatch", "{ resource.service.name = `does-not-exit-6c2408325a45` }"},
+		//
+		//// trace
+		//{"traceOrMatch", "{ rootServiceName = `tempo-gateway` && (status = error || span.http.status_code = 500)}"},
+		//{"traceOrNoMatch", "{ rootServiceName = `doesntexist` && (status = error || span.http.status_code = 500)}"},
+		//
+		//// mixed
+		//{"mixedValNoMatch", "{ .bloom = `does-not-exit-6c2408325a45` }"},
+		//{"mixedValMixedMatchAnd", "{ resource.foo = `bar` && name = `gcs.ReadRange` }"},
+		//{"mixedValMixedMatchOr", "{ resource.foo = `bar` || name = `gcs.ReadRange` }"},
+		//
+		//{"count", "{ } | count() > 1"},
+		//{"struct", "{ resource.service.name != `loki-querier` } >> { resource.service.name = `loki-gateway` && status = error }"},
+		//{"||", "{ resource.service.name = `loki-querier` } || { resource.service.name = `loki-gateway` }"},
+		//{"mixed", `{resource.namespace!="" && resource.service.name="cortex-gateway" && duration>50ms && resource.cluster=~"prod.*"}`},
+		//{"complex", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod" && resource.container="query-frontend" && name = "HTTP GET - tempo_api_v2_search_tags" && span.http.status_code = 200 && duration > 1s}`},
+		//{"select", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod"} | select(resource.container)`},
 	}
 
 	ctx := context.TODO()
@@ -1174,13 +1174,12 @@ func BenchmarkIterators(b *testing.B) {
 	rgs := pf.RowGroups()
 	rgs = rgs[3:5]
 
-	var instrPred *parquetquery.InstrumentedPredicate
+	var instrPred *pq.InstrumentedPredicate
 	makeIterInternal := makeIterFunc(ctx, rgs, pf)
 	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
-		instrPred = &parquetquery.InstrumentedPredicate{
+		instrPred = &pq.InstrumentedPredicate{
 			Pred: predicate,
 		}
-
 		return makeIterInternal(columnName, predicate, selectAs)
 	}
 
@@ -1188,17 +1187,16 @@ func BenchmarkIterators(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err := error(nil)
 
-		iter := makeIter(columnPathSpanAttrKey, parquetquery.NewSubstringPredicate("e"), "foo")
+		iter := makeIter(columnPathSpanAttrKey, pq.NewSubstringPredicate("e"), "foo")
 
-		//parquetquery.NewUnionIterator(DefinitionLevelResourceSpansILSSpanAttrs, []parquetquery.Iterator{
-		// makeIter(columnPathSpanHTTPStatusCode, parquetquery.NewIntEqualPredicate(500), "http_status"),
-		// makeIter(columnPathSpanName, parquetquery.NewStringEqualPredicate([]byte("foo")), "name"),
-		// makeIter(columnPathSpanStatusCode, parquetquery.NewIntEqualPredicate(2), "status"),
-		// makeIter(columnPathSpanAttrDouble, parquetquery.NewFloatEqualPredicate(500), "double"),
-		//makeIter(columnPathSpanAttrInt, parquetquery.NewIntEqualPredicate(500), "int"),
+		//pq.NewUnionIterator(DefinitionLevelResourceSpansILSSpanAttrs, []pq.Iterator{
+		// makeIter(columnPathSpanHTTPStatusCode, pq.NewIntEqualPredicate(500), "http_status"),
+		// makeIter(columnPathSpanName, pq.NewStringEqualPredicate([]byte("foo")), "name"),
+		// makeIter(columnPathSpanStatusCode, pq.NewIntEqualPredicate(2), "status"),
+		// makeIter(columnPathSpanAttrDouble, pq.NewFloatEqualPredicate(500), "double"),
+		//makeIter(columnPathSpanAttrInt, pq.NewIntEqualPredicate(500), "int"),
 		//}, nil)
 		require.NoError(b, err)
-		// fmt.Println(iter.String())
 
 		count := 0
 		for {
@@ -1214,12 +1212,12 @@ func BenchmarkIterators(b *testing.B) {
 		iter.Close()
 		if instrPred != nil {
 			b.ReportMetric(float64(count), "count")
-			b.ReportMetric(float64(instrPred.InspectedColumnChunks), "stats_cc")
-			b.ReportMetric(float64(instrPred.KeptColumnChunks), "stats_cc_kept")
-			b.ReportMetric(float64(instrPred.InspectedPages), "stats_ip")
-			b.ReportMetric(float64(instrPred.KeptPages), "stats_ip_kept")
-			b.ReportMetric(float64(instrPred.InspectedValues), "stats_v")
-			b.ReportMetric(float64(instrPred.KeptValues), "stats_v_kept")
+			//b.ReportMetric(float64(instrPred.InspectedColumnChunks), "stats_cc")
+			//b.ReportMetric(float64(instrPred.KeptColumnChunks), "stats_cc_kept")
+			//b.ReportMetric(float64(instrPred.InspectedPages), "stats_ip")
+			//b.ReportMetric(float64(instrPred.KeptPages), "stats_ip_kept")
+			//b.ReportMetric(float64(instrPred.InspectedValues), "stats_v")
+			//b.ReportMetric(float64(instrPred.KeptValues), "stats_v_kept")
 		}
 	}
 }
@@ -1235,45 +1233,88 @@ func BenchmarkIndexIterators(b *testing.B) {
 	rgs := pf.RowGroups()
 	rgs = rgs[:]
 
-	var pred *parquetquery.InstrumentedPredicate
-
+	var predicates []*pq.InstrumentedPredicate
 	makeIterInternal := makeIterFunc(ctx, rgs, pf)
 	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
-		pred = &parquetquery.InstrumentedPredicate{
+		pred := &pq.InstrumentedPredicate{
 			Pred: predicate,
 		}
-		return makeIterInternal(columnName, predicate, selectAs)
+		predicates = append(predicates, pred)
+		return makeIterInternal(columnName, pred, selectAs)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := error(nil)
 
-		iter := makeIter(columnPathSpanAttrKey, parquetquery.NewSubstringPredicate("e"), "foo")
+		keys := makeIter("Key", pq.NewStringEqualPredicate([]byte("k8s.cluster.name")), "key")
+		vals := makeIter("ValuesString.list.element.Value", pq.NewStringEqualPredicate([]byte("prod-au-southeast-0")), "value")
+		iter := pq.NewJoinIterator(0, []pq.Iterator{keys, vals}, nil)
 		require.NoError(b, err)
 
 		count := 0
-		for {
-			res, err := iter.Next()
-			if err != nil {
-				panic(err)
-			}
-			if res == nil {
-				break
-			}
+
+		res, err := iter.Next()
+		if err != nil {
+			panic(err)
+		}
+		if res != nil {
 			count++
 		}
+
 		iter.Close()
-		if pred != nil {
+		if len(predicates) > 0 {
+			pred := predicates[0]
 			b.ReportMetric(float64(count), "count")
-			b.ReportMetric(float64(pred.InspectedColumnChunks), "stats_cc")
-			b.ReportMetric(float64(pred.KeptColumnChunks), "stats_cc_kept")
-			b.ReportMetric(float64(pred.InspectedPages), "stats_ip")
-			b.ReportMetric(float64(pred.KeptPages), "stats_ip_kept")
+			//b.ReportMetric(float64(pred.InspectedColumnChunks), "stats_cc")
+			//b.ReportMetric(float64(pred.KeptColumnChunks), "stats_cc_kept")
+			//b.ReportMetric(float64(pred.InspectedPages), "stats_ip")
+			//b.ReportMetric(float64(pred.KeptPages), "stats_ip_kept")
 			b.ReportMetric(float64(pred.InspectedValues), "stats_v")
 			b.ReportMetric(float64(pred.KeptValues), "stats_v_kept")
 		}
 	}
+}
+
+var _ pq.Predicate = (*StringEqualPredicate)(nil)
+
+type StringEqualPredicate struct {
+	value []byte
+}
+
+func NewStringEqualPredicate(val []byte) StringEqualPredicate {
+	return StringEqualPredicate{value: val}
+}
+
+func (p StringEqualPredicate) String() string {
+	return fmt.Sprintf("StringEqualPredicate{%s}", p.value)
+}
+
+func (p StringEqualPredicate) KeepColumnChunk(col *pq.ColumnChunkHelper) bool {
+	minVal, maxVal, ok := col.Bounds()
+	if !ok {
+		return true
+	}
+	if bytes.Compare(p.value, minVal.ByteArray()) >= 0 && bytes.Compare(p.value, maxVal.ByteArray()) <= 0 {
+		return true
+	}
+	return false
+}
+
+func (p StringEqualPredicate) KeepPage(page parquet.Page) bool {
+	minVal, maxVal, ok := page.Bounds()
+	if !ok {
+		return true
+	}
+	if bytes.Compare(p.value, minVal.ByteArray()) >= 0 && bytes.Compare(p.value, maxVal.ByteArray()) <= 0 {
+		return true
+	}
+	return false
+}
+
+func (p StringEqualPredicate) KeepValue(val parquet.Value) bool {
+	vv := val.ByteArray()
+	return bytes.Equal(vv, p.value)
 }
 
 func BenchmarkBackendBlockQueryRange(b *testing.B) {

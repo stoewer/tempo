@@ -8,6 +8,7 @@ import (
 	"hash/fnv"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -54,6 +55,7 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 		return err
 	}
 	stats.printStats()
+	stats.printRandomAttributes(10, 10)
 
 	if len(cmd.IndexTypes) == 0 || len(cmd.IndexTypes) == 2 {
 		fmt.Println("Generating combined index with inverted index and key/value codes")
@@ -235,6 +237,41 @@ func (fs *fileStats) printStats() {
 	_ = w.Flush()
 
 	fmt.Printf("\n\n")
+}
+
+func (fs *fileStats) printRandomAttributes(n, minCardinality int) {
+	fmt.Printf("Printing random %d attributes:\n", n)
+	keys := make([]string, 0, len(fs.Attributes))
+	vals := make([]string, 0, 1000)
+
+	for k, _ := range fs.Attributes {
+		keys = append(keys, k)
+	}
+
+	count := 0
+	for count < n {
+		attr := fs.Attributes[keys[rand.Intn(len(keys))]]
+
+		if len(attr.ValuesString) < minCardinality {
+			continue
+		}
+
+		vals = vals[:0]
+		for _, v := range attr.ValuesString {
+			if len(v.Value) != 1 {
+				continue
+			}
+			vals = append(vals, v.Value[0])
+		}
+		if len(vals) < minCardinality {
+			continue
+		}
+		count++
+
+		val := vals[rand.Intn(len(vals))]
+		fmt.Printf("%s=%s (cardinality %d)\n", attr.Key, val, len(vals))
+	}
+	fmt.Println()
 }
 
 func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
