@@ -335,9 +335,9 @@ func TestBackendBlockSearchTraceQL(t *testing.T) {
 		)},
 		{
 			"Mix of duration with other conditions", makeReq(
-			parse(t, `{`+LabelName+` = "hello"}`),   // Match
-			parse(t, `{`+LabelDuration+` < 100s }`), // No match
-		),
+				parse(t, `{`+LabelName+` = "hello"}`),   // Match
+				parse(t, `{`+LabelDuration+` < 100s }`), // No match
+			),
 		},
 		// Edge cases
 		{"Almost conflicts with intrinsic but still works", traceql.MustExtractFetchSpansRequestWithMetadata(`{.name = "Bob"}`)},
@@ -2366,18 +2366,4 @@ func parquetFileAndFooterSize(path string) (int64, uint32, error) {
 	footerSize := binary.LittleEndian.Uint32(buff[:4])
 
 	return fileSize, footerSize, nil
-}
-
-var _ io.ReaderAt = &benchReaderAt{}
-
-type benchReaderAt struct {
-	Reader io.ReaderAt
-	Delay  time.Duration
-	Count  int64
-}
-
-func (b *benchReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
-	time.Sleep(b.Delay)
-	b.Count++
-	return b.Reader.ReadAt(p, off)
 }
