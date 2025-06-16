@@ -65,3 +65,14 @@ func (h *ColumnChunkHelper) Close() error {
 
 	return nil
 }
+
+func (h *ColumnChunkHelper) Bounds() (parquet.Value, parquet.Value, bool) {
+	index, err := h.ColumnChunk.ColumnIndex()
+	if err != nil {
+		return parquet.Value{}, parquet.Value{}, false
+	}
+
+	minValue := index.MinValue(0)
+	maxValue := index.MaxValue(index.NumPages() - 1)
+	return minValue, maxValue, true
+}
