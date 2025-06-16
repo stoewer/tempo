@@ -1061,32 +1061,32 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 	}{
 		// span
 		{"spanAttValMatch", "{ span.component = `net/http` }"},
-		{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
-		{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
-		{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
+		//{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
+		//{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
+		//{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
 
 		// resource
 		{"resourceAttValMatch", "{ resource.k8s.cluster.name = `prod-au-southeast-0` }"},
-		{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
-		{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
-		{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},
-		{"resourceAttIntrinsicMatch", "{ resource.service.name = `does-not-exit-6c2408325a45` }"},
+		//{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
+		//{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
+		//{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},
+		//{"resourceAttIntrinsicMatch", "{ resource.service.name = `does-not-exit-6c2408325a45` }"},
 
 		// trace
-		{"traceOrMatch", "{ rootServiceName = `tempo-gateway` && (status = error || span.http.status_code = 500)}"},
-		{"traceOrNoMatch", "{ rootServiceName = `doesntexist` && (status = error || span.http.status_code = 500)}"},
+		//{"traceOrMatch", "{ rootServiceName = `tempo-gateway` && (status = error || span.http.status_code = 500)}"},
+		//{"traceOrNoMatch", "{ rootServiceName = `doesntexist` && (status = error || span.http.status_code = 500)}"},
 
 		// mixed
-		{"mixedValNoMatch", "{ .bloom = `does-not-exit-6c2408325a45` }"},
-		{"mixedValMixedMatchAnd", "{ resource.foo = `bar` && name = `gcs.ReadRange` }"},
-		{"mixedValMixedMatchOr", "{ resource.foo = `bar` || name = `gcs.ReadRange` }"},
-
-		{"count", "{ } | count() > 1"},
-		{"struct", "{ resource.service.name != `loki-querier` } >> { resource.service.name = `loki-gateway` && status = error }"},
-		{"||", "{ resource.service.name = `loki-querier` } || { resource.service.name = `loki-gateway` }"},
-		{"mixed", `{resource.namespace!="" && resource.service.name="cortex-gateway" && duration>50ms && resource.cluster=~"prod.*"}`},
-		{"complex", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod" && resource.container="query-frontend" && name = "HTTP GET - tempo_api_v2_search_tags" && span.http.status_code = 200 && duration > 1s}`},
-		{"select", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod"} | select(resource.container)`},
+		//{"mixedValNoMatch", "{ .bloom = `does-not-exit-6c2408325a45` }"},
+		//{"mixedValMixedMatchAnd", "{ resource.foo = `bar` && name = `gcs.ReadRange` }"},
+		//{"mixedValMixedMatchOr", "{ resource.foo = `bar` || name = `gcs.ReadRange` }"},
+		//
+		//{"count", "{ } | count() > 1"},
+		//{"struct", "{ resource.service.name != `loki-querier` } >> { resource.service.name = `loki-gateway` && status = error }"},
+		//{"||", "{ resource.service.name = `loki-querier` } || { resource.service.name = `loki-gateway` }"},
+		//{"mixed", `{resource.namespace!="" && resource.service.name="cortex-gateway" && duration>50ms && resource.cluster=~"prod.*"}`},
+		//{"complex", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod" && resource.container="query-frontend" && name = "HTTP GET - tempo_api_v2_search_tags" && span.http.status_code = 200 && duration > 1s}`},
+		//{"select", `{resource.cluster=~"prod.*" && resource.namespace = "tempo-prod"} | select(resource.container)`},
 	}
 
 	ctx := context.TODO()
