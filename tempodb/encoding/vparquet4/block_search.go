@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"time"
@@ -77,13 +78,28 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	o = append(o, parquet.ReadBufferSize(readBufferSize))
 
 	// cached reader
-	cachedReaderAt := newCachedReaderAt(backendReaderAt, readBufferSize, int64(b.meta.Size_), b.meta.FooterSize) // most reads to the backend are going to be readbuffersize so use it as our "page cache" size
+	cachedReader := newCachedReaderAt(backendReaderAt, readBufferSize, int64(b.meta.Size_), b.meta.FooterSize) // most reads to the backend are going to be readbuffersize so use it as our "page cache" size
+	benchReader := &benchReaderAt{Delay: time.Millisecond * 50, Reader: cachedReader}
 
 	_, span := tracer.Start(ctx, "parquet.OpenFile")
 	defer span.End()
-	pf, err := parquet.OpenFile(cachedReaderAt, int64(b.meta.Size_), o...)
+	pf, err := parquet.OpenFile(benchReader, int64(b.meta.Size_), o...)
 
 	return pf, backendReaderAt, err
+}
+
+var _ io.ReaderAt = &benchReaderAt{}
+
+type benchReaderAt struct {
+	Reader io.ReaderAt
+	Delay  time.Duration
+	Count  int64
+}
+
+func (b *benchReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	time.Sleep(b.Delay)
+	b.Count++
+	return b.Reader.ReadAt(p, off)
 }
 
 func (b *backendBlock) Search(ctx context.Context, req *tempopb.SearchRequest, opts common.SearchOptions) (_ *tempopb.SearchResponse, err error) {
