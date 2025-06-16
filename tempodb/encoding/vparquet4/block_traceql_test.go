@@ -3,7 +3,9 @@ package vparquet4
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -19,7 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/tempo/pkg/parquetquery"
-	pq "github.com/grafana/tempo/pkg/parquetquery"
 	"github.com/grafana/tempo/pkg/tempopb"
 	v1 "github.com/grafana/tempo/pkg/tempopb/trace/v1"
 	"github.com/grafana/tempo/pkg/traceql"
@@ -29,7 +30,6 @@ import (
 	"github.com/grafana/tempo/tempodb/backend"
 	"github.com/grafana/tempo/tempodb/backend/local"
 	"github.com/grafana/tempo/tempodb/encoding/common"
-	"github.com/parquet-go/parquet-go"
 )
 
 func TestCreateIntPredicateFromFloat(t *testing.T) {
@@ -335,9 +335,9 @@ func TestBackendBlockSearchTraceQL(t *testing.T) {
 		)},
 		{
 			"Mix of duration with other conditions", makeReq(
-				parse(t, `{`+LabelName+` = "hello"}`),   // Match
-				parse(t, `{`+LabelDuration+` < 100s }`), // No match
-			),
+			parse(t, `{`+LabelName+` = "hello"}`),   // Match
+			parse(t, `{`+LabelDuration+` < 100s }`), // No match
+		),
 		},
 		// Edge cases
 		{"Almost conflicts with intrinsic but still works", traceql.MustExtractFetchSpansRequestWithMetadata(`{.name = "Bob"}`)},
@@ -1066,6 +1066,7 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 		{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
 
 		// resource
+		{"resourceAttValMatch", "{ resource.k8s.cluster.name = `prod-au-southeast-0` }"},
 		{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
 		{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
 		{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},
@@ -1176,11 +1177,10 @@ func BenchmarkIterators(b *testing.B) {
 
 	var instrPred *parquetquery.InstrumentedPredicate
 	makeIterInternal := makeIterFunc(ctx, rgs, pf)
-	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
+	makeIter := func(columnName string, predicate parquetquery.Predicate, selectAs string) parquetquery.Iterator {
 		instrPred = &parquetquery.InstrumentedPredicate{
 			Pred: predicate,
 		}
-
 		return makeIterInternal(columnName, predicate, selectAs)
 	}
 
@@ -1198,7 +1198,6 @@ func BenchmarkIterators(b *testing.B) {
 		//makeIter(columnPathSpanAttrInt, parquetquery.NewIntEqualPredicate(500), "int"),
 		//}, nil)
 		require.NoError(b, err)
-		// fmt.Println(iter.String())
 
 		count := 0
 		for {
@@ -1230,50 +1229,94 @@ func BenchmarkIndexIterators(b *testing.B) {
 
 	block := blockForBenchmarks(b)
 
-	pf := openIndexForBenchmark(b, block.meta, opts)
+	pf, r := openIndexForSearch(b, block, opts)
 
 	rgs := pf.RowGroups()
 	rgs = rgs[:]
 
-	var pred *parquetquery.InstrumentedPredicate
-
+	var predicates []*parquetquery.InstrumentedPredicate
 	makeIterInternal := makeIterFunc(ctx, rgs, pf)
-	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
-		pred = &parquetquery.InstrumentedPredicate{
+	makeIter := func(columnName string, predicate parquetquery.Predicate, selectAs string) parquetquery.Iterator {
+		pred := &parquetquery.InstrumentedPredicate{
 			Pred: predicate,
 		}
-		return makeIterInternal(columnName, predicate, selectAs)
+		predicates = append(predicates, pred)
+		return makeIterInternal(columnName, pred, selectAs)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := error(nil)
 
-		iter := makeIter(columnPathSpanAttrKey, parquetquery.NewSubstringPredicate("e"), "foo")
+		keys := makeIter("Key", parquetquery.NewStringEqualPredicate([]byte("k8s.cluster.name")), "key")
+		vals := makeIter("ValuesString.list.element.Value", parquetquery.NewStringEqualPredicate([]byte("prod-au-southeast-0")), "value")
+		iter := parquetquery.NewJoinIterator(0, []parquetquery.Iterator{keys, vals}, nil)
 		require.NoError(b, err)
 
-		count := 0
-		for {
-			res, err := iter.Next()
-			if err != nil {
-				panic(err)
-			}
-			if res == nil {
-				break
-			}
-			count++
+		results := 0
+
+		res, err := iter.Next()
+		if err != nil {
+			panic(err)
 		}
+		if res != nil {
+			results++
+		}
+
 		iter.Close()
-		if pred != nil {
-			b.ReportMetric(float64(count), "count")
-			b.ReportMetric(float64(pred.InspectedColumnChunks), "stats_cc")
-			b.ReportMetric(float64(pred.KeptColumnChunks), "stats_cc_kept")
-			b.ReportMetric(float64(pred.InspectedPages), "stats_ip")
-			b.ReportMetric(float64(pred.KeptPages), "stats_ip_kept")
-			b.ReportMetric(float64(pred.InspectedValues), "stats_v")
-			b.ReportMetric(float64(pred.KeptValues), "stats_v_kept")
+		b.ReportMetric(float64(r.Count), "reads")
+		if len(predicates) > 0 {
+			pred := predicates[0]
+			b.ReportMetric(float64(results), "results")
+			//b.ReportMetric(float64(pred.InspectedColumnChunks), "stats_cc")
+			//b.ReportMetric(float64(pred.KeptColumnChunks), "stats_cc_kept")
+			//b.ReportMetric(float64(pred.InspectedPages), "stats_ip")
+			//b.ReportMetric(float64(pred.KeptPages), "stats_ip_kept")
+			b.ReportMetric(float64(pred.InspectedValues), "vals")
+			b.ReportMetric(float64(pred.KeptValues), "vals_kept")
 		}
 	}
+}
+
+var _ parquetquery.Predicate = (*StringEqualPredicate)(nil)
+
+type StringEqualPredicate struct {
+	value []byte
+}
+
+func NewStringEqualPredicate(val []byte) StringEqualPredicate {
+	return StringEqualPredicate{value: val}
+}
+
+func (p StringEqualPredicate) String() string {
+	return fmt.Sprintf("StringEqualPredicate{%s}", p.value)
+}
+
+func (p StringEqualPredicate) KeepColumnChunk(col *parquetquery.ColumnChunkHelper) bool {
+	minVal, maxVal, ok := col.Bounds()
+	if !ok {
+		return true
+	}
+	if bytes.Compare(p.value, minVal.ByteArray()) >= 0 && bytes.Compare(p.value, maxVal.ByteArray()) <= 0 {
+		return true
+	}
+	return false
+}
+
+func (p StringEqualPredicate) KeepPage(page parquet.Page) bool {
+	minVal, maxVal, ok := page.Bounds()
+	if !ok {
+		return true
+	}
+	if bytes.Compare(p.value, minVal.ByteArray()) >= 0 && bytes.Compare(p.value, maxVal.ByteArray()) <= 0 {
+		return true
+	}
+	return false
+}
+
+func (p StringEqualPredicate) KeepValue(val parquet.Value) bool {
+	vv := val.ByteArray()
+	return bytes.Equal(vv, p.value)
 }
 
 func BenchmarkBackendBlockQueryRange(b *testing.B) {
@@ -2233,17 +2276,14 @@ func blockForBenchmarks(b *testing.B) *backendBlock {
 	return newBackendBlock(meta, rr)
 }
 
-func openIndexForBenchmark(b *testing.B, meta *backend.BlockMeta, searchOpts common.SearchOptions) *parquet.File {
-	path, ok := os.LookupEnv("BENCH_PATH")
+func openIndexForSearch(b *testing.B, block *backendBlock, searchOpts common.SearchOptions) (*parquet.File, *benchReaderAt) {
+	blockPath, ok := os.LookupEnv("BENCH_PATH")
 	if !ok {
 		b.Fatal("BENCH_PATH is not set. These benchmarks are designed to run against a block on local disk. Set BENCH_PATH to the root of the backend such that the block to benchmark is at <BENCH_PATH>/<BENCH_TENANTID>/<BENCH_BLOCKID>.")
 	}
+	indexPath := filepath.Join(blockPath, block.meta.TenantID, block.meta.BlockID.String(), "index.parquet")
 
-	indexPath := filepath.Join(path, meta.TenantID, meta.BlockID.String(), "index.parquet")
-	f, err := os.Open(indexPath)
-	require.NoError(b, err)
-
-	stat, err := f.Stat()
+	fileSize, footerSize, err := parquetFileAndFooterSize(indexPath)
 	require.NoError(b, err)
 
 	opts := []parquet.FileOption{
@@ -2257,8 +2297,87 @@ func openIndexForBenchmark(b *testing.B, meta *backend.BlockMeta, searchOpts com
 	}
 	opts = append(opts, parquet.ReadBufferSize(readBufferSize))
 
-	pf, err := parquet.OpenFile(f, stat.Size(), opts...)
+	backendReaderAt := NewBackendReaderAt(context.Background(), block.r, "index.parquet", block.meta)
+
+	cachedReader := newCachedReaderAt(backendReaderAt, readBufferSize, fileSize, footerSize)
+	benchReader := &benchReaderAt{Delay: time.Millisecond * 50, Reader: cachedReader}
+
+	pf, err := parquet.OpenFile(benchReader, fileSize, opts...)
+
+	return pf, benchReader
+}
+
+func openIndexForBenchmark(b *testing.B, meta *backend.BlockMeta, searchOpts common.SearchOptions) (*parquet.File, io.ReaderAt) {
+	path, ok := os.LookupEnv("BENCH_PATH")
+	if !ok {
+		b.Fatal("BENCH_PATH is not set. These benchmarks are designed to run against a block on local disk. Set BENCH_PATH to the root of the backend such that the block to benchmark is at <BENCH_PATH>/<BENCH_TENANTID>/<BENCH_BLOCKID>.")
+	}
+
+	indexPath := filepath.Join(path, meta.TenantID, meta.BlockID.String(), "index.parquet")
+	f, err := os.Open(indexPath)
 	require.NoError(b, err)
 
-	return pf
+	stat, err := f.Stat()
+	require.NoError(b, err)
+
+	readerAt := &benchReaderAt{Delay: time.Millisecond * 50, Reader: f}
+
+	opts := []parquet.FileOption{
+		parquet.SkipBloomFilters(true),
+		parquet.SkipPageIndex(true),
+		parquet.FileReadMode(parquet.ReadModeAsync),
+	}
+	readBufferSize := searchOpts.ReadBufferSize
+	if readBufferSize <= 0 {
+		readBufferSize = parquet.DefaultFileConfig().ReadBufferSize
+	}
+	opts = append(opts, parquet.ReadBufferSize(readBufferSize))
+
+	pf, err := parquet.OpenFile(readerAt, stat.Size(), opts...)
+	require.NoError(b, err)
+
+	return pf, readerAt
+}
+
+func parquetFileAndFooterSize(path string) (int64, uint32, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+
+	// Get file stats to get the total file size
+	stat, err := f.Stat()
+	if err != nil {
+		return 0, 0, err
+	}
+	fileSize := stat.Size()
+
+	// Read the last 8 bytes (4 bytes footer length + 4 bytes PAR1 magic string)
+	buff := make([]byte, 8)
+	_, err = f.ReadAt(buff, fileSize-8)
+	if err != nil {
+		return 0, 0, err
+	}
+	if string(buff[4:]) != "PAR1" {
+		return 0, 0, fmt.Errorf("invalid parquet magic footer: %x", buff[4:])
+	}
+
+	footerSize := binary.LittleEndian.Uint32(buff[:4])
+
+	return fileSize, footerSize, nil
+}
+
+var _ io.ReaderAt = &benchReaderAt{}
+
+type benchReaderAt struct {
+	Reader io.ReaderAt
+	Delay  time.Duration
+	Count  int64
+}
+
+func (b *benchReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	time.Sleep(b.Delay)
+	b.Count++
+	return b.Reader.ReadAt(p, off)
 }
