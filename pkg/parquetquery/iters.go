@@ -912,14 +912,12 @@ outer:
 		// when everything is fully exhausted. We check once more
 		// and then exit.
 		if j.peeks[0] == nil {
-			for i := range j.iters {
-				res, err := j.peek(i)
-				if err != nil {
-					return nil, err
-				}
-				if res == nil {
-					return nil, nil
-				}
+			res, err := j.peek(0)
+			if err != nil {
+				return nil, err
+			}
+			if res == nil {
+				return nil, nil
 			}
 		}
 
