@@ -580,18 +580,20 @@ func (c *SyncIterator) seekPages(seekTo RowNumber, definitionLevel int) (done bo
 		//    pages.SeekToRow is more costly than expected.  It doesn't reuse existing i/o
 		// so it can't be called naively every time we swap pages. We need to figure out
 		// a way to determine when it is worth calling here.
-		/*
-			// Seek into the pages. This is relative to the start of the row group
-			if seekTo[0] > 0 {
-				// Determine row delta. We subtract 1 because curr points at the previous row
-				skip := seekTo[0] - c.currRowGroupMin[0] - 1
-				if skip > 0 {
-					if err := c.currPages.SeekToRow(skip); err != nil {
-						return true, err
-					}
-					c.curr.Skip(skip)
+		if seekTo[0] > 0 {
+			skip := int64(seekTo[0])
+			offset := int64(c.currRowGroupMin[0])
+			if offset > 0 {
+				skip = skip - offset
+			}
+
+			if skip > 0 {
+				if err := c.currChunk.SeekTo(skip); err != nil {
+					return true, err
 				}
-			}*/
+				c.curr.Skip(skip)
+			}
+		}
 
 		for c.currPage == nil {
 			pg, err := c.currChunk.NextPage()
