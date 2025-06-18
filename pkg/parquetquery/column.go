@@ -30,6 +30,19 @@ func (h *ColumnChunkHelper) Dictionary() parquet.Dictionary {
 	return h.firstPage.Dictionary()
 }
 
+func (h *ColumnChunkHelper) SeekTo(row int64) error {
+	if h.pages == nil {
+		h.pages = h.ColumnChunk.Pages()
+	}
+
+	if h.firstPage != nil && h.firstPage.NumRows() < row {
+		parquet.Release(h.firstPage)
+		h.firstPage = nil
+	}
+
+	return h.pages.SeekToRow(row)
+}
+
 // NextPage wraps pages.ReadPage and helps reuse already open buffers.
 func (h *ColumnChunkHelper) NextPage() (parquet.Page, error) {
 	if h.err != nil {
