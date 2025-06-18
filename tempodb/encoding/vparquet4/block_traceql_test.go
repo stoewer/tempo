@@ -335,9 +335,9 @@ func TestBackendBlockSearchTraceQL(t *testing.T) {
 		)},
 		{
 			"Mix of duration with other conditions", makeReq(
-				parse(t, `{`+LabelName+` = "hello"}`),   // Match
-				parse(t, `{`+LabelDuration+` < 100s }`), // No match
-			),
+			parse(t, `{`+LabelName+` = "hello"}`),   // Match
+			parse(t, `{`+LabelDuration+` < 100s }`), // No match
+		),
 		},
 		// Edge cases
 		{"Almost conflicts with intrinsic but still works", traceql.MustExtractFetchSpansRequestWithMetadata(`{.name = "Bob"}`)},
@@ -2288,8 +2288,8 @@ func openIndexForSearch(b *testing.B, block *backendBlock, searchOpts common.Sea
 
 	opts := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		parquet.SkipPageIndex(true),
-		parquet.FileReadMode(parquet.ReadModeAsync),
+		//parquet.SkipPageIndex(true),
+		parquet.FileReadMode(parquet.ReadModeSync),
 	}
 	readBufferSize := searchOpts.ReadBufferSize
 	if readBufferSize <= 0 {
