@@ -378,6 +378,7 @@ func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File)
 			pq.SyncIteratorOptPredicate(predicate),
 			pq.SyncIteratorOptSelectAs(selectAs),
 			pq.SyncIteratorOptMaxDefinitionLevel(maxDef),
+			pq.SyncIteratorOptUsePageIndex(true),
 		}
 		if name != columnPathSpanID && name != columnPathTraceID {
 			opts = append(opts, pq.SyncIteratorOptIntern())
