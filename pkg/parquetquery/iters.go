@@ -372,19 +372,26 @@ func SyncIteratorOptMaxDefinitionLevel(maxDefinitionLevel int) SyncIteratorOpt {
 	}
 }
 
+func SyncIteratorOptUsePageIndex(usePageIndex bool) SyncIteratorOpt {
+	return func(i *SyncIterator) {
+		i.usePageIndex = usePageIndex
+	}
+}
+
 // SyncIterator is a synchronous column iterator. It scans through the given row
 // groups and column, and applies the optional predicate to each chunk, page, and value.
 // Results are read by calling Next() until it returns nil.
 type SyncIterator struct {
 	// Config
-	column     int
-	columnName string
-	selectAs   string
-	rgs        []pq.RowGroup
-	rgsMin     []RowNumber
-	rgsMax     []RowNumber // Exclusive, row number of next one past the row group
-	readSize   int
-	filter     Predicate
+	column       int
+	columnName   string
+	selectAs     string
+	rgs          []pq.RowGroup
+	rgsMin       []RowNumber
+	rgsMax       []RowNumber // Exclusive, row number of next one past the row group
+	readSize     int
+	filter       Predicate
+	usePageIndex bool
 
 	// Status
 	span            trace.Span
@@ -580,7 +587,7 @@ func (c *SyncIterator) seekPages(seekTo RowNumber, definitionLevel int) (done bo
 		//    pages.SeekToRow is more costly than expected.  It doesn't reuse existing i/o
 		// so it can't be called naively every time we swap pages. We need to figure out
 		// a way to determine when it is worth calling here.
-		if seekTo[0] > 0 {
+		if c.usePageIndex && seekTo[0] > 0 {
 			skip := int64(seekTo[0])
 			offset := int64(c.currRowGroupMin[0])
 			if offset > 0 {
