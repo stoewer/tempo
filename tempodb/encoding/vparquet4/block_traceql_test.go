@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -1061,25 +1060,25 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 	}{
 		// span
 		{"spanAttValMatch", "{ span.component = `net/http` }"},
-		//{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
-		//{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
-		//{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
+		{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
+		{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
+		{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
 
 		// resource
 		{"resourceAttValMatch", "{ resource.k8s.cluster.name = `prod-au-southeast-0` }"},
-		//{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
-		//{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
-		//{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},
-		//{"resourceAttIntrinsicMatch", "{ resource.service.name = `does-not-exit-6c2408325a45` }"},
+		{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
+		{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
+		{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},
+		{"resourceAttIntrinsicMatch", "{ resource.service.name = `does-not-exit-6c2408325a45` }"},
 
 		// trace
 		//{"traceOrMatch", "{ rootServiceName = `tempo-gateway` && (status = error || span.http.status_code = 500)}"},
 		//{"traceOrNoMatch", "{ rootServiceName = `doesntexist` && (status = error || span.http.status_code = 500)}"},
 
 		// mixed
-		//{"mixedValNoMatch", "{ .bloom = `does-not-exit-6c2408325a45` }"},
-		//{"mixedValMixedMatchAnd", "{ resource.foo = `bar` && name = `gcs.ReadRange` }"},
-		//{"mixedValMixedMatchOr", "{ resource.foo = `bar` || name = `gcs.ReadRange` }"},
+		{"mixedValNoMatch", "{ .bloom = `does-not-exit-6c2408325a45` }"},
+		{"mixedValMixedMatchAnd", "{ resource.foo = `bar` && name = `gcs.ReadRange` }"},
+		{"mixedValMixedMatchOr", "{ resource.foo = `bar` || name = `gcs.ReadRange` }"},
 		//
 		//{"count", "{ } | count() > 1"},
 		//{"struct", "{ resource.service.name != `loki-querier` } >> { resource.service.name = `loki-gateway` && status = error }"},
@@ -1096,13 +1095,14 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 
 	block := blockForBenchmarks(b)
 
-	_, _, err := block.openForSearch(ctx, opts)
-	require.NoError(b, err)
+	//_, _, err := block.openForSearch(ctx, opts)
+	//require.NoError(b, err)
 
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ResetTimer()
 			bytesRead := 0
+			block.count = 0
 
 			for i := 0; i < b.N; i++ {
 				e := traceql.NewEngine()
@@ -1118,6 +1118,7 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 			}
 			b.SetBytes(int64(bytesRead) / int64(b.N))
 			b.ReportMetric(float64(bytesRead)/float64(b.N)/1000.0/1000.0, "MB_io/op")
+			b.ReportMetric(float64(block.count)/float64(b.N), "reads/op")
 		})
 	}
 }
@@ -2289,7 +2290,7 @@ func openIndexForSearch(b *testing.B, block *backendBlock, searchOpts common.Sea
 	opts := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
 		//parquet.SkipPageIndex(true),
-		parquet.FileReadMode(parquet.ReadModeSync),
+		parquet.FileReadMode(parquet.ReadModeAsync),
 	}
 	readBufferSize := searchOpts.ReadBufferSize
 	if readBufferSize <= 0 {
