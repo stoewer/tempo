@@ -2307,38 +2307,6 @@ func openIndexForSearch(b *testing.B, block *backendBlock, searchOpts common.Sea
 	return pf, benchReader
 }
 
-func openIndexForBenchmark(b *testing.B, meta *backend.BlockMeta, searchOpts common.SearchOptions) (*parquet.File, io.ReaderAt) {
-	path, ok := os.LookupEnv("BENCH_PATH")
-	if !ok {
-		b.Fatal("BENCH_PATH is not set. These benchmarks are designed to run against a block on local disk. Set BENCH_PATH to the root of the backend such that the block to benchmark is at <BENCH_PATH>/<BENCH_TENANTID>/<BENCH_BLOCKID>.")
-	}
-
-	indexPath := filepath.Join(path, meta.TenantID, meta.BlockID.String(), "index.parquet")
-	f, err := os.Open(indexPath)
-	require.NoError(b, err)
-
-	stat, err := f.Stat()
-	require.NoError(b, err)
-
-	readerAt := &benchReaderAt{Delay: time.Millisecond * 50, Reader: f}
-
-	opts := []parquet.FileOption{
-		parquet.SkipBloomFilters(true),
-		parquet.SkipPageIndex(true),
-		parquet.FileReadMode(parquet.ReadModeAsync),
-	}
-	readBufferSize := searchOpts.ReadBufferSize
-	if readBufferSize <= 0 {
-		readBufferSize = parquet.DefaultFileConfig().ReadBufferSize
-	}
-	opts = append(opts, parquet.ReadBufferSize(readBufferSize))
-
-	pf, err := parquet.OpenFile(readerAt, stat.Size(), opts...)
-	require.NoError(b, err)
-
-	return pf, readerAt
-}
-
 func parquetFileAndFooterSize(path string) (int64, uint32, error) {
 	f, err := os.Open(path)
 	if err != nil {
