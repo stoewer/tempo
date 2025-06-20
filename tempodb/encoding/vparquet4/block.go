@@ -24,6 +24,7 @@ type backendBlock struct {
 	r    backend.Reader
 
 	openMtx sync.Mutex
+	count   int
 }
 
 var _ common.BackendBlock = (*backendBlock)(nil)

@@ -64,7 +64,7 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	// no searches currently require bloom filters or the page index. so just add them statically
 	o := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		parquet.SkipPageIndex(true),
+		//parquet.SkipPageIndex(true),
 		parquet.FileReadMode(parquet.ReadModeAsync),
 		parquet.FileSchema(parquetSchema),
 	}
@@ -79,7 +79,7 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 
 	// cached reader
 	cachedReader := newCachedReaderAt(backendReaderAt, readBufferSize, int64(b.meta.Size_), b.meta.FooterSize) // most reads to the backend are going to be readbuffersize so use it as our "page cache" size
-	benchReader := &benchReaderAt{Delay: time.Millisecond * 50, Reader: cachedReader}
+	benchReader := &benchReaderAt{Delay: time.Millisecond * 50, Reader: cachedReader, CountFn: func() { b.count++ }}
 
 	_, span := tracer.Start(ctx, "parquet.OpenFile")
 	defer span.End()
@@ -91,13 +91,17 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 var _ io.ReaderAt = &benchReaderAt{}
 
 type benchReaderAt struct {
-	Reader io.ReaderAt
-	Delay  time.Duration
-	Count  int64
+	Reader  io.ReaderAt
+	Delay   time.Duration
+	Count   int64
+	CountFn func()
 }
 
 func (b *benchReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
 	time.Sleep(b.Delay)
+	if b.CountFn != nil {
+		b.CountFn()
+	}
 	b.Count++
 	return b.Reader.ReadAt(p, off)
 }
