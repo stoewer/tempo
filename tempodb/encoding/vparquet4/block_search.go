@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"strconv"
 	"time"
@@ -64,7 +63,7 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	// no searches currently require bloom filters or the page index. so just add them statically
 	o := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		//parquet.SkipPageIndex(true),
+		parquet.SkipPageIndex(true),
 		parquet.FileReadMode(parquet.ReadModeAsync),
 		parquet.FileSchema(parquetSchema),
 	}
@@ -86,24 +85,6 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	pf, err := parquet.OpenFile(benchReader, int64(b.meta.Size_), o...)
 
 	return pf, backendReaderAt, err
-}
-
-var _ io.ReaderAt = &benchReaderAt{}
-
-type benchReaderAt struct {
-	Reader  io.ReaderAt
-	Delay   time.Duration
-	Count   int64
-	CountFn func()
-}
-
-func (b *benchReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
-	time.Sleep(b.Delay)
-	if b.CountFn != nil {
-		b.CountFn()
-	}
-	b.Count++
-	return b.Reader.ReadAt(p, off)
 }
 
 func (b *backendBlock) Search(ctx context.Context, req *tempopb.SearchRequest, opts common.SearchOptions) (_ *tempopb.SearchResponse, err error) {
