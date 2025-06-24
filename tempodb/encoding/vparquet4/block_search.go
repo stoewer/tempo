@@ -369,7 +369,7 @@ func rawToResults(ctx context.Context, pf *parquet.File, rgs []parquet.RowGroup,
 // makeIterFn is a helper to create an iterator, that abstracts away context like file and row groups.
 type makeIterFn func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator
 
-func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File) makeIterFn {
+func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File, opts ...pq.SyncIteratorOpt) makeIterFn {
 	return func(name string, predicate pq.Predicate, selectAs string) pq.Iterator {
 		index, _, maxDef := pq.GetColumnIndexByPath(pf, name)
 		if index == -1 {
@@ -377,13 +377,12 @@ func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File)
 			panic("column not found in parquet file:" + name)
 		}
 
-		opts := []pq.SyncIteratorOpt{
+		opts = append(opts,
 			pq.SyncIteratorOptColumnName(name),
 			pq.SyncIteratorOptPredicate(predicate),
 			pq.SyncIteratorOptSelectAs(selectAs),
 			pq.SyncIteratorOptMaxDefinitionLevel(maxDef),
-			pq.SyncIteratorOptUsePageIndex(true),
-		}
+		)
 		if name != columnPathSpanID && name != columnPathTraceID {
 			opts = append(opts, pq.SyncIteratorOptIntern())
 		}
