@@ -332,12 +332,10 @@ func TestBackendBlockSearchTraceQL(t *testing.T) {
 			parse(t, `{.`+LabelHTTPStatusCode+` = 500}`),
 			parse(t, `{.`+LabelHTTPStatusCode+` > 500}`),
 		)},
-		{
-			"Mix of duration with other conditions", makeReq(
+		{"Mix of duration with other conditions", makeReq(
 			parse(t, `{`+LabelName+` = "hello"}`),   // Match
 			parse(t, `{`+LabelDuration+` < 100s }`), // No match
-		),
-		},
+		)},
 		// Edge cases
 		{"Almost conflicts with intrinsic but still works", traceql.MustExtractFetchSpansRequestWithMetadata(`{.name = "Bob"}`)},
 		{"service.name doesn't match type of dedicated column", traceql.MustExtractFetchSpansRequestWithMetadata(`{resource.` + LabelServiceName + ` = 123}`)},
@@ -1177,7 +1175,7 @@ func BenchmarkIterators(b *testing.B) {
 	rgs = rgs[3:5]
 
 	var instrPred *parquetquery.InstrumentedPredicate
-	makeIterInternal := makeIterFunc(ctx, rgs, pf)
+	makeIterInternal := makeIterFunc(ctx, rgs, pf, parquetquery.SyncIteratorOptUsePageIndex(true))
 	makeIter := func(columnName string, predicate parquetquery.Predicate, selectAs string) parquetquery.Iterator {
 		instrPred = &parquetquery.InstrumentedPredicate{
 			Pred: predicate,
