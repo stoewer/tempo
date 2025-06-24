@@ -38,15 +38,13 @@ func BenchmarkIndexIterators(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		err := error(nil)
-
+	for range b.N {
 		keys := makeIter("Key", pq.NewStringEqualPredicate([]byte("k8s.cluster.name")), "key")
 		vals := makeIter("ValuesString.list.element.Value", pq.NewStringEqualPredicate([]byte("prod-au-southeast-0")), "value")
 		iter := pq.NewJoinIterator(0, []pq.Iterator{keys, vals}, nil)
-		require.NoError(b, err)
 
-		results := 0
+		var results int
+		r.Count = 0
 
 		res, err := iter.Next()
 		if err != nil {
@@ -57,7 +55,7 @@ func BenchmarkIndexIterators(b *testing.B) {
 		}
 
 		iter.Close()
-		b.ReportMetric(float64(r.Count), "reads")
+		b.ReportMetric(float64(r.Count), "reads/op")
 		if len(predicates) > 0 {
 			pred := predicates[0]
 			b.ReportMetric(float64(results), "results")
@@ -83,8 +81,8 @@ func openIndexForSearch(b *testing.B, block *backendBlock, searchOpts common.Sea
 
 	opts := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		//parquet.SkipPageIndex(true),
-		parquet.FileReadMode(parquet.ReadModeAsync),
+		parquet.SkipPageIndex(false),
+		parquet.FileReadMode(parquet.ReadModeSync),
 	}
 	readBufferSize := searchOpts.ReadBufferSize
 	if readBufferSize <= 0 {
