@@ -39,9 +39,10 @@ func BenchmarkIndexIterators(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		keys := makeIter("Key", pq.NewStringEqualPredicate([]byte("k8s.cluster.name")), "key")
-		vals := makeIter("ValuesString.list.element.Value", pq.NewStringEqualPredicate([]byte("prod-au-southeast-0")), "value")
-		iter := pq.NewJoinIterator(0, []pq.Iterator{keys, vals}, nil)
+		//keys := makeIter("Key", pq.NewStringEqualPredicate([]byte("k8s.cluster.name")), "key")
+		//vals := makeIter("ValuesString.list.element.Value", pq.NewStringEqualPredicate([]byte("prod-au-southeast-0")), "value")
+		//iter := pq.NewJoinIterator(0, []pq.Iterator{keys, vals}, nil)
+		iter := createIndexIterator(makeIter, "k8s.cluster.name", "prod-au-southeast-0")
 
 		var results int
 		r.Count = 0
