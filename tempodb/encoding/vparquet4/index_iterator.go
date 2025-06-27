@@ -34,7 +34,7 @@ const (
 var indexResultPool = sync.Pool{
 	New: func() interface{} {
 		return &indexResult{
-			RowNumbers: make([]pq.RowNumber, 0, 64),
+			RowNumbers: make([]pq.RowNumber, 0, 1024),
 		}
 	},
 }
@@ -161,7 +161,6 @@ func (r rowNumberCollector) KeepGroup(res *pq.IteratorResult) bool {
 
 	res.Entries = res.Entries[:0]
 	res.AppendOtherValue(entryRowNumberKey, row)
-	//putRowNumbers(row)
 
 	return true
 }

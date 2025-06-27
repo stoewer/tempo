@@ -43,23 +43,34 @@ func BenchmarkIndexIterators(b *testing.B) {
 		//vals := makeIter("ValuesString.list.element.Value", pq.NewStringEqualPredicate([]byte("prod-au-southeast-0")), "value")
 		//iter := pq.NewJoinIterator(0, []pq.Iterator{keys, vals}, nil)
 		iter := createIndexIterator(makeIter, "k8s.cluster.name", "prod-au-southeast-0")
-
-		var results int
 		r.Count = 0
 
 		res, err := iter.Next()
 		if err != nil {
 			panic(err)
 		}
+
+		var (
+			results        int
+			rowNumberCount int
+		)
 		if res != nil {
-			results++
+			for _, e := range res.OtherEntries {
+				if v, ok := e.Value.(*indexResult); ok {
+					rowNumberCount += len(v.RowNumbers)
+					results++
+					putIndexResult(v)
+				}
+			}
 		}
 
 		iter.Close()
 		b.ReportMetric(float64(r.Count), "reads/op")
+		b.ReportMetric(float64(results), "results")
+		b.ReportMetric(float64(rowNumberCount), "row_numbers")
+
 		if len(predicates) > 0 {
 			pred := predicates[0]
-			b.ReportMetric(float64(results), "results")
 			//b.ReportMetric(float64(pred.InspectedColumnChunks), "stats_cc")
 			//b.ReportMetric(float64(pred.KeptColumnChunks), "stats_cc_kept")
 			//b.ReportMetric(float64(pred.InspectedPages), "stats_ip")
