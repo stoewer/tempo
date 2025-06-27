@@ -33,26 +33,170 @@ const (
 
 var indexResultPool = sync.Pool{
 	New: func() interface{} {
-		return &indexResult{
+		return &IndexResult{
 			RowNumbers: make([]pq.RowNumber, 0, 1024),
 		}
 	},
 }
 
-func putIndexResult(r *indexResult) {
+func putIndexResult(r *IndexResult) {
 	r.RowNumbers = r.RowNumbers[:0]
 	indexResultPool.Put(r)
 }
 
-func getIndexResult() *indexResult {
-	return indexResultPool.Get().(*indexResult)
+func getIndexResult() *IndexResult {
+	return indexResultPool.Get().(*IndexResult)
 }
 
-type indexResult struct {
+type IndexResult struct {
 	Key        string
 	Value      string
 	ScopeMask  int64
 	RowNumbers []pq.RowNumber
+}
+
+func NewIndexIterator(makeIter makeIterFn, maxRowNums int, key, value string) *IndexIterator {
+	return &IndexIterator{
+		keyIter:   makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
+		valIter:   makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
+		scopeIter: makeIter(indexColScopeMask, nil, indexColScopeMask),
+		rowNumberIter: []pq.Iterator{
+			makeIter(indexColStringValRowNumbersLvl1, nil, entryRowNumberKey),
+			makeIter(indexColStringValRowNumbersLvl2, nil, entryRowNumberKey),
+			makeIter(indexColStringValRowNumbersLvl3, nil, entryRowNumberKey),
+			makeIter(indexColStringValRowNumbersLvl4, nil, entryRowNumberKey),
+		},
+		maxRowNums: maxRowNums,
+		pos:        pq.EmptyRowNumber(),
+		last: struct {
+			pos pq.RowNumber
+			row pq.RowNumber
+		}{
+			pos: pq.EmptyRowNumber(),
+			row: pq.EmptyRowNumber(),
+		},
+	}
+}
+
+type IndexIterator struct {
+	keyIter       pq.Iterator
+	valIter       pq.Iterator
+	scopeIter     pq.Iterator
+	rowNumberIter []pq.Iterator
+	maxRowNums    int
+
+	// state
+	pos  pq.RowNumber // position of last match
+	last struct {
+		pos pq.RowNumber // position of the last read row number
+		row pq.RowNumber // the last read row number
+	}
+}
+
+func (ii *IndexIterator) Next() (*IndexResult, error) {
+	var ires IndexResult
+
+	res, err := ii.keyIter.Next()
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, nil
+	}
+
+	for _, e := range res.Entries {
+		if e.Key == indexColKey {
+			ires.Key = string(e.Value.ByteArray())
+			break
+		}
+	}
+
+	res, err = ii.valIter.SeekTo(res.RowNumber, 0)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, nil
+	}
+
+	ii.pos = res.RowNumber
+	for _, e := range res.Entries {
+		if e.Key == entryValueKey {
+			ires.Value = string(e.Value.ByteArray())
+			break
+		}
+	}
+
+	ires.RowNumbers = make([]pq.RowNumber, 0, ii.maxRowNums)
+
+	if len(ires.RowNumbers) < ii.maxRowNums {
+		var row pq.RowNumber
+
+		for i, ri := range ii.rowNumberIter {
+			res, err = ri.SeekTo(ii.pos, 2)
+			if err != nil {
+				return nil, err
+			}
+			if res == nil {
+				return &ires, nil
+			}
+			for _, e := range res.Entries {
+				if e.Key == entryRowNumberKey {
+					row[i] = e.Value.Int32()
+					break
+				}
+			}
+		}
+
+		ii.last.pos = res.RowNumber
+		ii.last.row = row
+
+		if pq.CompareRowNumbers(1, ii.pos, ii.last.pos) != 0 {
+			return &ires, nil
+		}
+
+		ires.RowNumbers = append(ires.RowNumbers, ii.last.row)
+	}
+
+	for len(ires.RowNumbers) < ii.maxRowNums {
+		var row pq.RowNumber
+
+		for i, ri := range ii.rowNumberIter {
+			res, err = ri.SeekTo(ii.pos, 2)
+			if err != nil {
+				return nil, err
+			}
+			if res == nil {
+				return &ires, nil
+			}
+			for _, e := range res.Entries {
+				if e.Key == entryRowNumberKey {
+					row[i] = e.Value.Int32()
+					break
+				}
+			}
+		}
+
+		ii.last.pos = res.RowNumber
+		ii.last.row = row
+
+		if pq.CompareRowNumbers(1, ii.pos, ii.last.pos) != 0 {
+			return &ires, nil
+		}
+
+		ires.RowNumbers = append(ires.RowNumbers, ii.last.row)
+	}
+
+	return &ires, nil
+}
+
+func (ii *IndexIterator) Close() {
+	ii.keyIter.Close()
+	ii.valIter.Close()
+	ii.scopeIter.Close()
+	for _, iter := range ii.rowNumberIter {
+		iter.Close()
+	}
 }
 
 var _ pq.GroupPredicate = (*indexCollector)(nil)
@@ -64,11 +208,11 @@ func (i indexCollector) String() string {
 }
 
 func (i indexCollector) KeepGroup(res *pq.IteratorResult) bool {
-	var idx *indexResult
+	var idx *IndexResult
 
-	// Look for existing indexResult first
+	// Look for existing IndexResult first
 	for _, e := range res.OtherEntries {
-		if v, ok := e.Value.(*indexResult); ok {
+		if v, ok := e.Value.(*IndexResult); ok {
 			idx = v
 			break
 		}
@@ -99,7 +243,7 @@ func (i indexCollector) KeepGroup(res *pq.IteratorResult) bool {
 		}
 	}
 
-	// Reset the result and add the indexResult to OtherEntries
+	// Reset the result and add the IndexResult to OtherEntries
 	res.Reset()
 	res.AppendOtherValue(entryResultKey, idx)
 
