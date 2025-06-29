@@ -111,6 +111,7 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 		}
 	}
 
+	// Important: Currently this only works if there is a matching value in that row
 	res, err = ii.valIter.SeekTo(res.RowNumber, 0)
 	if err != nil {
 		return nil, err
@@ -129,7 +130,7 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 
 	ires.RowNumbers = make([]pq.RowNumber, 0, ii.maxRowNums)
 
-	if len(ires.RowNumbers) < ii.maxRowNums {
+	if ii.maxRowNums == 0 || len(ires.RowNumbers) < ii.maxRowNums {
 		var row pq.RowNumber
 
 		for i, ri := range ii.rowNumberIter {
@@ -158,7 +159,7 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 		ires.RowNumbers = append(ires.RowNumbers, ii.last.row)
 	}
 
-	for len(ires.RowNumbers) < ii.maxRowNums {
+	for ii.maxRowNums == 0 || len(ires.RowNumbers) < ii.maxRowNums {
 		var row pq.RowNumber
 
 		for i, ri := range ii.rowNumberIter {
