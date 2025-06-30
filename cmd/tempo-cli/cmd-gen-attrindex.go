@@ -136,6 +136,8 @@ func (cmd *attrIndexCmd) collectAttributeStats() (*fileStats, error) {
 
 func (cmd *attrIndexCmd) collectAttributeStatsForTraces(stats *fileStats, traces []vp4.Trace) {
 	row := pq.EmptyRowNumber()
+	row.Skip(int64(stats.Traces))
+
 	stats.Traces += len(traces)
 	for _, tr := range traces {
 		stats.Resources += len(tr.ResourceSpans)
