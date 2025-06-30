@@ -57,22 +57,24 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 	stats.printStats()
 	stats.printRandomAttributes(10, 10)
 
-	if len(cmd.IndexTypes) == 0 || len(cmd.IndexTypes) == 2 {
-		fmt.Println("Generating combined index with inverted index and key/value codes")
+	numRowGroups := estimateRowGroups(stats)
 
+	if len(cmd.IndexTypes) == 0 || len(cmd.IndexTypes) == 2 {
 		index := generateCombinedIndex(stats)
-		err = writeAttributeIndex(cmd.In, index)
+
+		fmt.Printf("Generating combined index with %d rows and %d row groups\n", len(index), numRowGroups)
+		err = writeAttributeIndex(cmd.In, index, numRowGroups)
 	} else if len(cmd.IndexTypes) == 1 {
 		if cmd.IndexTypes[0] == "rows" {
-			fmt.Println("Generating inverted index with rows")
-
 			index := generateRowsIndex(stats)
-			err = writeAttributeIndex(cmd.In, index)
-		} else if cmd.IndexTypes[0] == "codes" {
-			fmt.Println("Generating index with key/value codes")
+			fmt.Printf("Generating inverted index with %d rows and %d row groups\n", len(index), numRowGroups)
 
+			err = writeAttributeIndex(cmd.In, index, numRowGroups)
+		} else if cmd.IndexTypes[0] == "codes" {
 			index := generateCodesIndex(stats)
-			err = writeAttributeIndex(cmd.In, index)
+
+			fmt.Printf("Generating index with key/value codes with %d rows and %d row groups\n", len(index), numRowGroups)
+			err = writeAttributeIndex(cmd.In, index, numRowGroups)
 		}
 	}
 	if err != nil {
@@ -602,7 +604,7 @@ type rowNumberCols struct {
 	Lvl04 int64 `parquet:",snappy,delta"`
 }
 
-func writeAttributeIndex[T any](in string, index []T) error {
+func writeAttributeIndex[T any](in string, index []T, numRowGroups int) error {
 	stat, err := os.Stat(filepath.Join(in, "data.parquet"))
 	if err != nil {
 		return err
@@ -617,13 +619,31 @@ func writeAttributeIndex[T any](in string, index []T) error {
 	writer := parquet.NewGenericWriter[T](out)
 	defer writer.Close()
 
+	rgSize := (len(index) / numRowGroups) + 1
+
 	writeCount := 0
 	for writeCount < len(index) {
-		n, err := writer.Write(index[writeCount:])
+		// row group length is either rgSize or the remainder of the index
+		rgLen := min(rgSize, len(index)-writeCount)
+
+		rg := index[writeCount : writeCount+rgLen]
+		rgWriteCount := 0
+
+		fmt.Printf("... write row group with %d rows\n", len(rg))
+
+		for rgWriteCount < len(rg) {
+			n, err := writer.Write(rg[rgWriteCount:])
+			if err != nil {
+				return err
+			}
+			rgWriteCount += n
+		}
+
+		err = writer.Flush()
 		if err != nil {
 			return err
 		}
-		writeCount += n
+		writeCount += rgWriteCount
 	}
 
 	err = writer.Flush()
@@ -937,4 +957,22 @@ func cmpSliceBool(a, b []bool) int {
 		}
 	}
 	return cmp.Compare(len(a), len(b))
+}
+
+const magicUncompressedPageSize = 4_500_000
+
+func estimateRowGroups(stats *fileStats) int {
+	var uncompressedValueSize int
+
+	for _, attr := range stats.Attributes {
+		for _, vals := range attr.ValuesString {
+			for _, val := range vals.Value {
+				uncompressedValueSize += len(val)
+			}
+		}
+	}
+
+	// estimate 5 pages per RG
+	uncompressedRowGroupSize := magicUncompressedPageSize * 5
+	return uncompressedValueSize / uncompressedRowGroupSize
 }
