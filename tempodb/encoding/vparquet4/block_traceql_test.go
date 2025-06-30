@@ -1086,8 +1086,8 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 
 	ctx := context.TODO()
 	opts := common.DefaultSearchOptions()
-	opts.StartPage = 3
-	opts.TotalPages = 2
+	opts.StartPage = 0
+	opts.TotalPages = 5
 
 	block := blockForBenchmarks(b)
 
