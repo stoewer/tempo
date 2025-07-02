@@ -28,7 +28,7 @@ func BenchmarkIndexIterators(b *testing.B) {
 	rgs = rgs[:]
 
 	var predicates []*pq.InstrumentedPredicate
-	makeIterInternal := makeIterFunc(ctx, rgs, pf, pq.SyncIteratorOptUsePageIndex(true))
+	makeIterInternal := makeIterFunc(ctx, rgs, pf, pq.SyncIteratorOptUseSeekTo(true))
 	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
 		pred := &pq.InstrumentedPredicate{
 			Pred: predicate,
