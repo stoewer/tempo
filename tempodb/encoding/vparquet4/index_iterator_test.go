@@ -1,6 +1,7 @@
 package vparquet4
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -133,4 +134,29 @@ func parquetFileAndFooterSize(path string) (int64, uint32, error) {
 	footerSize := binary.LittleEndian.Uint32(buff[:4])
 
 	return fileSize, footerSize, nil
+}
+
+func TestReadWriteRowNumbers(t *testing.T) {
+	testRows := []pq.RowNumber{
+		{100, 22, -1, -1, 0, 0, 0, 0},
+		{1010, 0, 3, -1, 0, 0, 0, 0},
+		{2, 2000, 987, 8, 0, 0, 0, 0},
+	}
+
+	var buf bytes.Buffer
+	err := writeRowNumbers(&buf, testRows)
+	require.NoError(t, err)
+
+	expected := "100,22,-1,-1\n1010,0,3,-1\n2,2000,987,8\n"
+	require.Equal(t, expected, buf.String())
+
+	readRows, err := readRowNumbers(&buf)
+	require.NoError(t, err)
+
+	require.Equal(t, len(testRows), len(readRows))
+	for i, row := range testRows {
+		for j := 0; j < 4; j++ {
+			require.Equal(t, row[j], readRows[i][j])
+		}
+	}
 }
