@@ -39,17 +39,15 @@ func BenchmarkIndexIterators(b *testing.B) {
 	}
 
 	b.ResetTimer()
+
+	var res *IndexResult
+	var err error
+
 	for range b.N {
-		//keys := makeIter("Key", pq.NewStringEqualPredicate([]byte("k8s.cluster.name")), "key")
-		//vals := makeIter("ValuesString.list.element.Value", pq.NewStringEqualPredicate([]byte("prod-au-southeast-0")), "value")
-		//iter := pq.NewJoinIterator(0, []pq.Iterator{keys, vals}, nil)
-
-		// iter := createIndexIterator(makeIter, "k8s.cluster.name", "prod-au-southeast-0")
-
-		iter := NewIndexIterator(makeIter, 1000, "k8s.cluster.name", "prod-au-southeast-0")
+		iter := NewIndexIterator(makeIter, 0, "k8s.cluster.name", "prod-au-southeast-0")
 		r.Count = 0
 
-		res, err := iter.Next()
+		res, err = iter.Next()
 		if err != nil {
 			panic(err)
 		}
@@ -74,6 +72,21 @@ func BenchmarkIndexIterators(b *testing.B) {
 			b.ReportMetric(float64(pred.KeptValues), "vals_kept")
 		}
 	}
+
+	//if res == nil {
+	//	return
+	//}
+	//
+	//f, err := os.OpenFile("row-numbers.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//defer f.Close()
+	//
+	//err = writeRowNumbers(f, res.RowNumbers)
+	//if err != nil {
+	//	panic(err)
+	//}
 }
 
 func openIndexForSearch(b *testing.B, block *backendBlock, searchOpts common.SearchOptions) (*parquet.File, *benchReaderAt) {
