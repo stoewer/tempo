@@ -1,9 +1,12 @@
 package vparquet4
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -389,4 +392,47 @@ func createIndexIterator(makeIter makeIterFn, key, value string) pq.Iterator {
 	}
 
 	return pq.NewJoinIterator(0, inner, &indexCollector{})
+}
+
+func writeRowNumbers(w io.Writer, rows []pq.RowNumber) error {
+	for _, row := range rows {
+		_, err := fmt.Fprintf(w, "%d,%d,%d,%d\n", row[0], row[1], row[2], row[3])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readRowNumbers(r io.Reader) ([]pq.RowNumber, error) {
+	var rows []pq.RowNumber
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, ",")
+		if len(parts) != 4 {
+			return nil, fmt.Errorf("invalid format: expected 4 values, got %d", len(parts))
+		}
+
+		var row pq.RowNumber
+		for i := 0; i < 4; i++ {
+			val, err := strconv.ParseInt(parts[i], 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid number at position %d at line %s: %v", i, line, err)
+			}
+			row[i] = int32(val)
+		}
+		rows = append(rows, row)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
 }
