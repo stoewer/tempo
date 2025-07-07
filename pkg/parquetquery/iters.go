@@ -1109,14 +1109,12 @@ outer:
 		// when everything is fully exhausted. We check once more
 		// and then exit.
 		if j.peeksRequired[0] == nil {
-			for i := range j.peeksRequired {
-				res, err := j.peek(i)
-				if err != nil {
-					return nil, err
-				}
-				if res == nil {
-					return nil, nil
-				}
+			res, err := j.peek(0)
+			if err != nil {
+				return nil, err
+			}
+			if res == nil {
+				return nil, nil
 			}
 		}
 
