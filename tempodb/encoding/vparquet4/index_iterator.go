@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -435,4 +436,19 @@ func readRowNumbers(r io.Reader) ([]pq.RowNumber, error) {
 	}
 
 	return rows, nil
+}
+
+func loadRowNumbersFromFile(path string) ([]pq.RowNumber, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	rows, err := readRowNumbers(f)
+	if err != nil {
+		return nil, err
+	}
+
+	return rows, err
 }
