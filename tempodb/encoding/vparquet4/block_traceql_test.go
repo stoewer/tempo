@@ -1091,6 +1091,12 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 
 	block := blockForBenchmarks(b)
 
+	rn, err := loadRowNumbersFromFile("row-numbers.txt")
+	if err != nil {
+		b.Fatal(err)
+	}
+	block.rowNumbers = rn
+
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ResetTimer()
