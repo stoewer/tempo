@@ -1095,6 +1095,8 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ResetTimer()
 			bytesRead := 0
+			spansMatched := 0
+			tracesMatched := 0
 			block.count = 0
 
 			for i := 0; i < b.N; i++ {
@@ -1106,12 +1108,19 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 				require.NoError(b, err)
 				require.NotNil(b, resp)
 
-				// Read first 20 results (if any)
+				for _, t := range resp.Traces {
+					tracesMatched++
+					for _, s := range t.SpanSets {
+						spansMatched += int(s.Matched)
+					}
+				}
 				bytesRead += int(resp.Metrics.InspectedBytes)
 			}
 			b.SetBytes(int64(bytesRead) / int64(b.N))
 			b.ReportMetric(float64(bytesRead)/float64(b.N)/1000.0/1000.0, "MB_io/op")
 			b.ReportMetric(float64(block.count)/float64(b.N), "reads/op")
+			b.ReportMetric(float64(spansMatched)/float64(b.N), "spans/op")
+			b.ReportMetric(float64(tracesMatched)/float64(b.N), "traces/op")
 		})
 	}
 }
