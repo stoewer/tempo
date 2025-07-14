@@ -1632,7 +1632,7 @@ func createAllIterator(ctx context.Context, primaryIter parquetquery.Iterator, c
 		return nil, err
 	}
 
-	makeIter := makeIterFunc(ctx, rgs, pf)
+	makeIter := makeIterFunc(ctx, rgs, pf, parquetquery.SyncIteratorOptUseSeekTo(true))
 
 	// Global state
 	// Span-filtering behavior changes depending on the resource-filtering in effect,
