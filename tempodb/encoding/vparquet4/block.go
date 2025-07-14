@@ -8,9 +8,11 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+
+	pq "github.com/grafana/tempo/pkg/parquetquery"
 	"github.com/grafana/tempo/tempodb/backend"
 	"github.com/grafana/tempo/tempodb/encoding/common"
-	"go.opentelemetry.io/otel"
 )
 
 const (
@@ -25,6 +27,8 @@ type backendBlock struct {
 
 	openMtx sync.Mutex
 	count   int
+
+	rowNumbers []pq.RowNumber
 }
 
 var _ common.BackendBlock = (*backendBlock)(nil)

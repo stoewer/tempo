@@ -684,7 +684,7 @@ func (b *walBlock) Fetch(ctx context.Context, req traceql.FetchSpansRequest, _ c
 
 		pf := file.parquetFile
 
-		iter, err := fetch(ctx, req, pf, pf.RowGroups(), b.meta.DedicatedColumns)
+		iter, err := fetch(ctx, req, pf, pf.RowGroups(), b.meta.DedicatedColumns, nil)
 		if err != nil {
 			return traceql.FetchSpansResponse{}, fmt.Errorf("creating fetch iter: %w", err)
 		}
