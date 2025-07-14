@@ -1055,7 +1055,7 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 		query string
 	}{
 		// span
-		{"spanAttValMatch", "{ span.component = `net/http` }"},
+		// {"spanAttValMatch", "{ span.component = `net/http` }"},
 		//{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
 		//{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
 		//{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
