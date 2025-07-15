@@ -35,7 +35,7 @@ func (h *ColumnChunkHelper) SeekTo(row int64) error {
 		h.pages = h.ColumnChunk.Pages()
 	}
 
-	if h.firstPage != nil && h.firstPage.NumRows() < row {
+	if h.firstPage != nil {
 		parquet.Release(h.firstPage)
 		h.firstPage = nil
 	}
