@@ -593,11 +593,8 @@ func (c *SyncIterator) seekPages(seekTo RowNumber, definitionLevel int) (done bo
 		}
 
 		if c.useSeekTo && skips > 0 {
-			rowInRG := seekTo[0]
-			rgOffset := c.currRowGroupMin[0]
-			if rgOffset > 0 { // rgOffset can be -1
-				rowInRG = rowInRG - rgOffset
-			}
+			rgOffset := c.currRowGroupMin[0] + 1
+			rowInRG := seekTo[0] - rgOffset
 
 			if rowInRG > 0 {
 				err = c.currChunk.SeekTo(int64(rowInRG))
