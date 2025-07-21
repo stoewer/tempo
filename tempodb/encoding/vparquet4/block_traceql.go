@@ -1631,7 +1631,7 @@ func createAllIterator(ctx context.Context, primaryIter parquetquery.Iterator, c
 		return nil, err
 	}
 
-	makeIter := makeIterFunc(ctx, rgs, pf, parquetquery.SyncIteratorOptUseSeekTo(true))
+	makeIter := makeIterFunc(ctx, rgs, pf, parquetquery.SyncIteratorOptUseSeekTo(false))
 
 	// Global state
 	// Span-filtering behavior changes depending on the resource-filtering in effect,
@@ -2229,9 +2229,20 @@ func createResourceIterator(makeIter makeIterFn, instrumentationIterator parquet
 		columnPredicates[columnPath] = append(columnPredicates[columnPath], p)
 	}
 
-	iters = append(iters, &rowNumberIterator{rowNumbers: rn})
+	if len(rn) > 0 {
+		iters = append(iters, &rowNumberIterator{
+			rowNumbers: rn,
+			entry: &struct {
+				key string
+				val parquet.Value
+			}{key: "k8s.cluster.name", val: parquet.ValueOf("prod-au-southeast-0")}})
+	}
 
 	for _, cond := range conditions {
+
+		if len(rn) > 0 && cond.Attribute.Name == "k8s.cluster.name" {
+			continue
+		}
 
 		// Well-known selector?
 		if entry, ok := wellKnownColumnLookups[cond.Attribute.Name]; ok && entry.level != traceql.AttributeScopeSpan {
