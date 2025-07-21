@@ -407,6 +407,7 @@ type SyncIterator struct {
 	currBuf         []pq.Value
 	currBufN        int
 	currPageN       int
+	pageRowsMax     int32
 	at              IteratorResult // Current value pointed at by iterator. Returned by call Next and SeekTo, valid until next call.
 
 	maxDefinitionLevel int
@@ -583,16 +584,18 @@ func (c *SyncIterator) seekPages(seekTo RowNumber, definitionLevel int) (done bo
 	}
 
 	if c.currPage == nil {
-		// TODO (mdisibio)   :((((((((
-		//    pages.SeekToRow is more costly than expected.  It doesn't reuse existing i/o
-		// so it can't be called naively every time we swap pages. We need to figure out
-		// a way to determine when it is worth calling here.
 		skips := seekTo[0]
 		if c.curr[0] > 0 { // curr[0] can be -1
 			skips = skips - c.curr[0]
 		}
 
-		if c.useSeekTo && skips > 0 {
+		// Calling pages.SeekToRow resets the pages reading buffer.
+		// TODO can we avoid this reset?
+		//
+		// If we are seeking within a range that we already read, this leads to additional calls to
+		// the backend. Therefore, we only call seek when we can assume that we are jumping more
+		// than two pages.
+		if c.useSeekTo && skips > c.pageRowsMax*2 {
 			rgOffset := c.currRowGroupMin[0] + 1
 			rowInRG := seekTo[0] - rgOffset
 
@@ -830,6 +833,7 @@ func (c *SyncIterator) setPage(pg pq.Page) {
 		c.currPageMin = c.curr
 		c.currPageMax = rn
 		c.currValues = pg.Values()
+		c.pageRowsMax = max(c.pageRowsMax, int32(pg.NumRows()))
 	}
 }
 
