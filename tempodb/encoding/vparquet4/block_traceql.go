@@ -1674,7 +1674,7 @@ func createAllIterator(ctx context.Context, primaryIter parquetquery.Iterator, c
 		innerIterators = append(innerIterators, linkIter)
 	}
 
-	spanIter, err := createSpanIterator(makeIter, innerIterators, catConditions.span, allConditions, dc, selectAll)
+	spanIter, err := createSpanIterator(makeIter, innerIterators, catConditions.span, allConditions, dc, selectAll, rn)
 	if err != nil {
 		return nil, fmt.Errorf("creating span iterator: %w", err)
 	}
@@ -1838,7 +1838,7 @@ func createLinkIterator(makeIter makeIterFn, conditions []traceql.Condition, all
 
 // createSpanIterator iterates through all span-level columns, groups them into rows representing
 // one span each.  Spans are returned that match any of the given conditions.
-func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, dedicatedColumns backend.DedicatedColumns, selectAll bool) (parquetquery.Iterator, error) {
+func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, dedicatedColumns backend.DedicatedColumns, selectAll bool, rn []parquetquery.RowNumber) (parquetquery.Iterator, error) {
 	var (
 		columnSelectAs          = map[string]string{}
 		columnPredicates        = map[string][]parquetquery.Predicate{}
@@ -1874,7 +1874,20 @@ func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Itera
 		}
 	}
 
+	if len(rn) > 0 {
+		iters = append(iters, &rowNumberIterator{
+			rowNumbers: rn,
+			entry: &struct {
+				key string
+				val parquet.Value
+			}{key: "aws_region", val: parquet.ValueOf("us_east_1")}})
+	}
+
 	for _, cond := range conditions {
+		if len(rn) > 0 && cond.Attribute.Name == "aws_region" {
+			continue
+		}
+
 		// Intrinsic?
 		switch cond.Attribute.Intrinsic {
 		case traceql.IntrinsicSpanID:
@@ -2230,20 +2243,20 @@ func createResourceIterator(makeIter makeIterFn, instrumentationIterator parquet
 		columnPredicates[columnPath] = append(columnPredicates[columnPath], p)
 	}
 
-	if len(rn) > 0 {
-		iters = append(iters, &rowNumberIterator{
-			rowNumbers: rn,
-			entry: &struct {
-				key string
-				val parquet.Value
-			}{key: "k8s.cluster.name", val: parquet.ValueOf("prod-au-southeast-0")}})
-	}
+	//if len(rn) > 0 {
+	//	iters = append(iters, &rowNumberIterator{
+	//		rowNumbers: rn,
+	//		entry: &struct {
+	//			key string
+	//			val parquet.Value
+	//		}{key: "k8s.cluster.name", val: parquet.ValueOf("prod-au-southeast-0")}})
+	//}
 
 	for _, cond := range conditions {
 
-		if len(rn) > 0 && cond.Attribute.Name == "k8s.cluster.name" {
-			continue
-		}
+		//if len(rn) > 0 && cond.Attribute.Name == "k8s.cluster.name" {
+		//	continue
+		//}
 
 		// Well-known selector?
 		if entry, ok := wellKnownColumnLookups[cond.Attribute.Name]; ok && entry.level != traceql.AttributeScopeSpan {

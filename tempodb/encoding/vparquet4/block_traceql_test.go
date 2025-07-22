@@ -1055,13 +1055,13 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 		query string
 	}{
 		// span
-		// {"spanAttValMatch", "{ span.component = `net/http` }"},
+		{"spanAttValMatch", "{ span.aws_region=`us_east_1` }"},
 		//{"spanAttValNoMatch", "{ span.bloom = `does-not-exit-6c2408325a45` }"},
 		//{"spanAttIntrinsicMatch", "{ name = `/cortex.Ingester/Push` }"},
 		//{"spanAttIntrinsicNoMatch", "{ name = `does-not-exit-6c2408325a45` }"},
 
 		// resource
-		{"resourceAttValMatch", "{ resource.k8s.cluster.name = `prod-au-southeast-0` }"},
+		// {"resourceAttValMatch", "{ resource.k8s.cluster.name = `prod-au-southeast-0` }"},
 		//{"resourceAttValMatch", "{ resource.opencensus.exporterversion = `Jaeger-Go-2.30.0` }"},
 		//{"resourceAttValNoMatch", "{ resource.module.path = `does-not-exit-6c2408325a45` }"},
 		//{"resourceAttIntrinsicMatch", "{ resource.service.name = `tempo-gateway` }"},

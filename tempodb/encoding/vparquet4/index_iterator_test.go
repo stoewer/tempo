@@ -44,7 +44,7 @@ func BenchmarkIndexIterators(b *testing.B) {
 	var err error
 
 	for range b.N {
-		iter := NewIndexIterator(makeIter, 0, "k8s.cluster.name", "prod-au-southeast-0")
+		iter := NewIndexIterator(makeIter, 0, "aws_region", "us_east_1")
 		r.Count = 0
 
 		res, err = iter.Next()
