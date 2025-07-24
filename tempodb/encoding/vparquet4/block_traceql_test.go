@@ -1234,21 +1234,22 @@ func BenchmarkIterators(b *testing.B) {
 
 func BenchmarkBackendBlockQueryRange(b *testing.B) {
 	testCases := []string{
-		"{} | rate()",
-		"{} | rate() by (span.http.status_code)",
-		"{} | rate() by (resource.service.name)",
-		"{} | rate() by (span.http.url)", // High cardinality attribute
-		"{resource.service.name=`loki-ingester`} | rate()",
-		"{span.http.host != `` && span.http.flavor=`2`} | rate() by (span.http.flavor)", // Multiple conditions
-		"{status=error} | rate()",
-		"{} | quantile_over_time(duration, .99, .9, .5)",
-		"{} | quantile_over_time(duration, .99) by (span.http.status_code)",
-		"{} | histogram_over_time(duration)",
-		"{} | avg_over_time(duration) by (span.http.status_code)",
-		"{} | max_over_time(duration) by (span.http.status_code)",
-		"{} | min_over_time(duration) by (span.http.status_code)",
-		"{ name != nil } | compare({status=error})",
-		"{} > {} | rate() by (name)", // structural
+		`{span.aws_region="us_east_1"}|rate()`,
+		//"{} | rate()",
+		//"{} | rate() by (span.http.status_code)",
+		//"{} | rate() by (resource.service.name)",
+		//"{} | rate() by (span.http.url)", // High cardinality attribute
+		//"{resource.service.name=`loki-ingester`} | rate()",
+		//"{span.http.host != `` && span.http.flavor=`2`} | rate() by (span.http.flavor)", // Multiple conditions
+		//"{status=error} | rate()",
+		//"{} | quantile_over_time(duration, .99, .9, .5)",
+		//"{} | quantile_over_time(duration, .99) by (span.http.status_code)",
+		//"{} | histogram_over_time(duration)",
+		//"{} | avg_over_time(duration) by (span.http.status_code)",
+		//"{} | max_over_time(duration) by (span.http.status_code)",
+		//"{} | min_over_time(duration) by (span.http.status_code)",
+		//"{ name != nil } | compare({status=error})",
+		//"{} > {} | rate() by (name)", // structural
 	}
 
 	e := traceql.NewEngine()
@@ -1257,6 +1258,13 @@ func BenchmarkBackendBlockQueryRange(b *testing.B) {
 	opts.TotalPages = 1
 
 	block := blockForBenchmarks(b)
+
+	//rn, err := loadRowNumbersFromFile("row-numbers.txt")
+	//if err != nil {
+	//	b.Fatal(err)
+	//}
+	//block.rowNumbers = rn
+
 	_, _, err := block.openForSearch(ctx, opts)
 	require.NoError(b, err)
 
@@ -1266,8 +1274,9 @@ func BenchmarkBackendBlockQueryRange(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run(tc, func(b *testing.B) {
-			for _, minutes := range []int{5} {
+			for _, minutes := range []int{9} {
 				b.Run(strconv.Itoa(minutes), func(b *testing.B) {
+					block.count = 0
 					st := block.meta.StartTime
 					end := st.Add(time.Duration(minutes) * time.Minute)
 
@@ -1297,6 +1306,7 @@ func BenchmarkBackendBlockQueryRange(b *testing.B) {
 					b.ReportMetric(float64(bytes)/float64(b.N)/1024.0/1024.0, "MB_IO/op")
 					b.ReportMetric(float64(spansTotal)/float64(b.N), "spans/op")
 					b.ReportMetric(float64(spansTotal)/b.Elapsed().Seconds(), "spans/s")
+					b.ReportMetric(float64(block.count)/float64(b.N), "reads/op")
 				})
 			}
 		})
