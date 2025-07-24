@@ -1878,9 +1878,9 @@ func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Itera
 		iters = append(iters, &rowNumberIterator{
 			rowNumbers: rn,
 			entry: &struct {
-				key string
-				val parquet.Value
-			}{key: "aws_region", val: parquet.ValueOf("us_east_1")}})
+				Key   string
+				Value parquet.Value
+			}{Key: "aws_region", Value: parquet.ValueOf("us_east_1")}})
 	}
 
 	for _, cond := range conditions {

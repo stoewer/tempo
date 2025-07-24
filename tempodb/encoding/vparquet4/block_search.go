@@ -375,8 +375,8 @@ func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File,
 type rowNumberIterator struct {
 	rowNumbers []pq.RowNumber
 	entry      *struct {
-		key string
-		val parquet.Value
+		Key   string
+		Value parquet.Value
 	}
 }
 
@@ -392,8 +392,8 @@ func (r *rowNumberIterator) Next() (*pq.IteratorResult, error) {
 	}
 
 	res := &pq.IteratorResult{RowNumber: r.rowNumbers[0]}
-	if r.entry != nil {
-		res.AppendValue(r.entry.key, r.entry.val)
+	if r.entry.Key != "" {
+		res.Entries = append(res.Entries, *r.entry)
 	}
 	r.rowNumbers = r.rowNumbers[1:]
 	return res, nil
