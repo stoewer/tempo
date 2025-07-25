@@ -1095,7 +1095,13 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	block.rowNumbers = rn
+	block.rowNumbers = &rowNumberIterator{
+		rowNumbers: rn,
+		entry: &struct {
+			Key   string
+			Value parquet.Value
+		}{Key: "aws_region", Value: parquet.ValueOf("us_east_1")},
+	}
 
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
