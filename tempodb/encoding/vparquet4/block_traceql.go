@@ -1552,7 +1552,7 @@ func (i *mergeSpansetIterator) Close() {
 //                                                            |
 //                                                            V
 
-func fetch(ctx context.Context, req traceql.FetchSpansRequest, pf *parquet.File, rowGroups []parquet.RowGroup, dc backend.DedicatedColumns, rn []parquetquery.RowNumber) (*spansetIterator, error) {
+func fetch(ctx context.Context, req traceql.FetchSpansRequest, pf *parquet.File, rowGroups []parquet.RowGroup, dc backend.DedicatedColumns, rn *rowNumberIterator) (*spansetIterator, error) {
 	iter, err := createAllIterator(ctx, nil, req.Conditions, req.AllConditions, req.StartTimeUnixNanos, req.EndTimeUnixNanos, rowGroups, pf, dc, false, rn)
 	if err != nil {
 		return nil, fmt.Errorf("error creating iterator: %w", err)
@@ -1625,7 +1625,7 @@ func categorizeConditions(conditions []traceql.Condition) (*categorizedCondition
 	return &categorizedCond, mingled, nil
 }
 
-func createAllIterator(ctx context.Context, primaryIter parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, start, end uint64, rgs []parquet.RowGroup, pf *parquet.File, dc backend.DedicatedColumns, selectAll bool, rn []parquetquery.RowNumber) (parquetquery.Iterator, error) {
+func createAllIterator(ctx context.Context, primaryIter parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, start, end uint64, rgs []parquet.RowGroup, pf *parquet.File, dc backend.DedicatedColumns, selectAll bool, rn *rowNumberIterator) (parquetquery.Iterator, error) {
 	// categorize conditions by scope
 	catConditions, mingledConditions, err := categorizeConditions(conditions)
 	if err != nil {
@@ -1838,7 +1838,7 @@ func createLinkIterator(makeIter makeIterFn, conditions []traceql.Condition, all
 
 // createSpanIterator iterates through all span-level columns, groups them into rows representing
 // one span each.  Spans are returned that match any of the given conditions.
-func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, dedicatedColumns backend.DedicatedColumns, selectAll bool, rn []parquetquery.RowNumber) (parquetquery.Iterator, error) {
+func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, dedicatedColumns backend.DedicatedColumns, selectAll bool, rn *rowNumberIterator) (parquetquery.Iterator, error) {
 	var (
 		columnSelectAs          = map[string]string{}
 		columnPredicates        = map[string][]parquetquery.Predicate{}
@@ -1874,17 +1874,12 @@ func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Itera
 		}
 	}
 
-	if len(rn) > 0 {
-		iters = append(iters, &rowNumberIterator{
-			rowNumbers: rn,
-			entry: &struct {
-				Key   string
-				Value parquet.Value
-			}{Key: "aws_region", Value: parquet.ValueOf("us_east_1")}})
+	if rn != nil {
+		iters = append(iters, rn)
 	}
 
 	for _, cond := range conditions {
-		if len(rn) > 0 && cond.Attribute.Name == "aws_region" {
+		if rn != nil && cond.Attribute.Name == rn.entry.Key {
 			continue
 		}
 
@@ -2230,7 +2225,7 @@ func createInstrumentationIterator(makeIter makeIterFn, spanIterator parquetquer
 // createResourceIterator iterates through all resourcespans-level (batch-level) columns, groups them into rows representing
 // one batch each. It builds on top of the span iterator, and turns the groups of spans and resource-level values into
 // spansets. Spansets are returned that match any of the given conditions.
-func createResourceIterator(makeIter makeIterFn, instrumentationIterator parquetquery.Iterator, conditions []traceql.Condition, requireAtLeastOneMatchOverall, allConditions bool, dedicatedColumns backend.DedicatedColumns, selectAll bool, rn []parquetquery.RowNumber) (parquetquery.Iterator, error) {
+func createResourceIterator(makeIter makeIterFn, instrumentationIterator parquetquery.Iterator, conditions []traceql.Condition, requireAtLeastOneMatchOverall, allConditions bool, dedicatedColumns backend.DedicatedColumns, selectAll bool, rn *rowNumberIterator) (parquetquery.Iterator, error) {
 	var (
 		columnSelectAs    = map[string]string{}
 		columnPredicates  = map[string][]parquetquery.Predicate{}
@@ -2243,18 +2238,13 @@ func createResourceIterator(makeIter makeIterFn, instrumentationIterator parquet
 		columnPredicates[columnPath] = append(columnPredicates[columnPath], p)
 	}
 
-	//if len(rn) > 0 {
-	//	iters = append(iters, &rowNumberIterator{
-	//		rowNumbers: rn,
-	//		entry: &struct {
-	//			key string
-	//			val parquet.Value
-	//		}{key: "k8s.cluster.name", val: parquet.ValueOf("prod-au-southeast-0")}})
+	//if rn != nil {
+	//	iters = append(iters, rn)
 	//}
 
 	for _, cond := range conditions {
 
-		//if len(rn) > 0 && cond.Attribute.Name == "k8s.cluster.name" {
+		//if rn != nil && cond.Attribute.Name == rn.entry.Key {
 		//	continue
 		//}
 

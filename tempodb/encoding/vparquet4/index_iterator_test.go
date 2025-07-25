@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pq "github.com/grafana/tempo/pkg/parquetquery"
+	"github.com/grafana/tempo/pkg/tempopb"
+	"github.com/grafana/tempo/pkg/traceql"
 	"github.com/grafana/tempo/tempodb/encoding/common"
 )
 
@@ -147,6 +149,98 @@ func parquetFileAndFooterSize(path string) (int64, uint32, error) {
 	footerSize := binary.LittleEndian.Uint32(buff[:4])
 
 	return fileSize, footerSize, nil
+}
+
+func BenchmarkBackendBlockQueryRangeIndex(b *testing.B) {
+	// benchmark config
+	indexLookup := false
+	attrScope := "span"
+	attrKey := "aws_region"
+	attrValue := "us_east_1"
+
+	ctx := context.TODO()
+	opts := common.DefaultSearchOptions()
+
+	block := blockForBenchmarks(b)
+	pf, r := openIndexForSearch(b, block, opts)
+	_, _, err := block.openForSearch(ctx, opts)
+	require.NoError(b, err)
+
+	var predicates []*pq.InstrumentedPredicate
+	makeIterInternal := makeIterFunc(ctx, pf.RowGroups(), pf, pq.SyncIteratorOptUseSeekTo(true))
+	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
+		pred := &pq.InstrumentedPredicate{
+			Pred: predicate,
+		}
+		predicates = append(predicates, pred)
+		return makeIterInternal(columnName, pred, selectAs)
+	}
+
+	engine := traceql.NewEngine()
+	fetcher := traceql.NewSpansetFetcherWrapper(func(ctx context.Context, req traceql.FetchSpansRequest) (traceql.FetchSpansResponse, error) {
+		return block.Fetch(ctx, req, opts)
+	})
+
+	// Setup time range
+	minutes := 9
+	start := block.meta.StartTime
+	end := start.Add(time.Duration(minutes) * time.Minute)
+
+	req := &tempopb.QueryRangeRequest{
+		Query:     fmt.Sprintf(`{ %s.%s = "%s" } | rate()`, attrScope, attrKey, attrValue),
+		Step:      uint64(time.Minute),
+		Start:     uint64(start.UnixNano()),
+		End:       uint64(end.UnixNano()),
+		MaxSeries: 1000,
+	}
+
+	eval, err := engine.CompileMetricsQueryRange(req, 2, 0, false)
+	require.NoError(b, err)
+
+	// reset counter
+	block.count = 0
+	r.Count = 0
+	rnCount := 0
+	b.ResetTimer()
+
+	for range b.N {
+		// Index lookup
+		var res *IndexResult
+		if indexLookup {
+			iter := NewIndexIterator(makeIter, 0, attrKey, attrValue)
+
+			res, err = iter.Next()
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			iter.Close()
+		}
+
+		// Inject row numbers if present
+		if res != nil {
+			rnCount = len(res.RowNumbers)
+			block.rowNumbers = &rowNumberIterator{
+				rowNumbers: res.RowNumbers,
+				entry: &struct {
+					Key   string
+					Value parquet.Value
+				}{Key: attrKey, Value: parquet.ValueOf(attrValue)},
+			}
+		}
+
+		// TraceQL metrics query
+		err = eval.Do(ctx, fetcher, uint64(block.meta.StartTime.UnixNano()), uint64(block.meta.EndTime.UnixNano()), int(req.MaxSeries))
+		require.NoError(b, err)
+	}
+
+	// Report metrics
+	bytes, spansTotal, _ := eval.Metrics()
+	b.ReportMetric(float64(bytes)/1024.0/1024.0, "MB_IO/op")
+	b.ReportMetric(float64(spansTotal/uint64(b.N)), "spans/op")
+	b.ReportMetric(float64(spansTotal)/b.Elapsed().Seconds(), "spans/s")
+	b.ReportMetric(float64((block.count+r.Count)/int64(b.N)), "reads/op")
+	b.ReportMetric(float64(rnCount), "index_rn")
 }
 
 func TestReadWriteRowNumbers(t *testing.T) {
