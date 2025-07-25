@@ -1261,7 +1261,7 @@ func BenchmarkBackendBlockQueryRange(b *testing.B) {
 	e := traceql.NewEngine()
 	ctx := context.TODO()
 	opts := common.DefaultSearchOptions()
-	opts.TotalPages = 1
+	//opts.TotalPages = 1
 
 	block := blockForBenchmarks(b)
 
