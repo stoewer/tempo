@@ -358,19 +358,23 @@ func (p StringEqualPredicate) KeepValue(val parquet.Value) bool {
 var _ io.ReaderAt = &benchReaderAt{}
 
 type benchReaderAt struct {
-	Reader  io.ReaderAt
-	Delay   time.Duration
-	Count   int64
-	CountFn func()
+	Reader      io.ReaderAt
+	Delay       time.Duration
+	BytesRead   int
+	ReadCount   int64
+	ReadCountFn func()
 }
 
 func (b *benchReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
 	time.Sleep(b.Delay)
-	if b.CountFn != nil {
-		b.CountFn()
+	if b.ReadCountFn != nil {
+		b.ReadCountFn()
 	}
-	b.Count++
-	return b.Reader.ReadAt(p, off)
+	b.ReadCount++
+
+	n, err = b.Reader.ReadAt(p, off)
+	b.BytesRead += n
+	return n, err
 }
 
 func createRowNumberIterator(makeIter makeIterFn) pq.Iterator {

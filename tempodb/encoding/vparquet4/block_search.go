@@ -78,7 +78,7 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 
 	// cached reader
 	cachedReader := newCachedReaderAt(backendReaderAt, readBufferSize, int64(b.meta.Size_), b.meta.FooterSize) // most reads to the backend are going to be readbuffersize so use it as our "page cache" size
-	benchReader := &benchReaderAt{Delay: time.Millisecond * 50, Reader: cachedReader, CountFn: func() { b.count++ }}
+	benchReader := &benchReaderAt{Delay: time.Millisecond * 50, Reader: cachedReader, ReadCountFn: func() { b.count++ }}
 
 	_, span := tracer.Start(ctx, "parquet.OpenFile")
 	defer span.End()

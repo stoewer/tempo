@@ -1128,7 +1128,7 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 				}
 				bytesRead += int(resp.Metrics.InspectedBytes)
 			}
-			b.SetBytes(int64(bytesRead) / int64(b.N))
+			b.SetBytes(int64(bytesRead / b.N))
 			b.ReportMetric(float64(bytesRead)/float64(b.N)/1000.0/1000.0, "MB_io/op")
 			b.ReportMetric(float64(block.count)/float64(b.N), "reads/op")
 			b.ReportMetric(float64(spansMatched)/float64(b.N), "spans/op")
@@ -1309,7 +1309,7 @@ func BenchmarkBackendBlockQueryRange(b *testing.B) {
 					}
 
 					bytes, spansTotal, _ := eval.Metrics()
-					b.ReportMetric(float64(bytes)/float64(b.N)/1024.0/1024.0, "MB_IO/op")
+					b.ReportMetric(float64(bytes)/float64(b.N)/1000/1000, "MB_io/op")
 					b.ReportMetric(float64(spansTotal)/float64(b.N), "spans/op")
 					b.ReportMetric(float64(spansTotal)/b.Elapsed().Seconds(), "spans/s")
 					b.ReportMetric(float64(block.count)/float64(b.N), "reads/op")

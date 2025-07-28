@@ -40,39 +40,41 @@ func BenchmarkIndexIterators(b *testing.B) {
 		return makeIterInternal(columnName, pred, selectAs)
 	}
 
-	b.ResetTimer()
-
 	var res *IndexResult
 	var err error
 
+	// reset counter
+	b.ResetTimer()
+	r.BytesRead = 0
+	r.ReadCount = 0
+	rowNumberCount := 0
+	results := 0
+
 	for range b.N {
 		iter := NewIndexIterator(makeIter, 0, "aws_region", "us_east_1")
-		r.Count = 0
 
 		res, err = iter.Next()
 		if err != nil {
 			panic(err)
 		}
 
-		var (
-			results        int
-			rowNumberCount int
-		)
 		if res != nil {
 			results++
-			rowNumberCount = len(res.RowNumbers)
+			rowNumberCount += len(res.RowNumbers)
 		}
 
 		iter.Close()
-		b.ReportMetric(float64(r.Count), "reads/op")
-		b.ReportMetric(float64(results), "results")
-		b.ReportMetric(float64(rowNumberCount), "row_numbers")
+	}
 
-		if len(predicates) > 0 {
-			pred := predicates[0]
-			b.ReportMetric(float64(pred.InspectedValues), "vals")
-			b.ReportMetric(float64(pred.KeptValues), "vals_kept")
-		}
+	b.ReportMetric(float64(r.BytesRead)/float64(b.N)/1000/1000, "MB_io/op")
+	b.ReportMetric(float64(r.ReadCount)/float64(b.N), "reads/op")
+	b.ReportMetric(float64(rowNumberCount)/float64(b.N), "index_rn")
+
+	b.ReportMetric(float64(results)/float64(b.N), "results/op")
+	if len(predicates) > 0 {
+		pred := predicates[0]
+		b.ReportMetric(float64(pred.InspectedValues), "vals")
+		b.ReportMetric(float64(pred.KeptValues), "vals_kept")
 	}
 
 	//if res == nil {
@@ -139,7 +141,8 @@ func BenchmarkBackendBlockQueryRangeIndex(b *testing.B) {
 
 	// reset counter
 	block.count = 0
-	r.Count = 0
+	r.ReadCount = 0
+	r.BytesRead = 0
 	rnCount := 0
 	b.ResetTimer()
 
@@ -175,12 +178,15 @@ func BenchmarkBackendBlockQueryRangeIndex(b *testing.B) {
 	}
 
 	// Report metrics
-	readBytes, spansTotal, _ := eval.Metrics()
-	b.ReportMetric(float64(readBytes)/1024.0/1024.0, "MB_IO/op")
-	b.ReportMetric(float64(spansTotal/uint64(b.N)), "spans/op")
+	bytesRead, spansTotal, _ := eval.Metrics()
+	totalByes := int(bytesRead) + r.BytesRead
+	b.SetBytes(int64(totalByes / b.N))
+	b.ReportMetric(float64(totalByes)/float64(b.N)/1000/1000, "MB_io/op")
+	totalCount := block.count + r.ReadCount
+	b.ReportMetric(float64(totalCount)/float64(b.N), "reads/op")
+	b.ReportMetric(float64(spansTotal)/float64(b.N), "spans/op")
 	b.ReportMetric(float64(spansTotal)/b.Elapsed().Seconds(), "spans/s")
-	b.ReportMetric(float64((block.count+r.Count)/int64(b.N)), "reads/op")
-	b.ReportMetric(float64(rnCount), "index_rn")
+	b.ReportMetric(float64(rnCount)/float64(b.N), "index_rn")
 }
 
 func BenchmarkBackendBlockTraceQLIndex(b *testing.B) {
@@ -215,7 +221,7 @@ func BenchmarkBackendBlockTraceQLIndex(b *testing.B) {
 
 	// counter and metrics
 	block.count = 0
-	r.Count = 0
+	r.ReadCount = 0
 	rnCount := 0
 	bytesRead := 0
 	spansMatched := 0
@@ -267,11 +273,13 @@ func BenchmarkBackendBlockTraceQLIndex(b *testing.B) {
 	}
 
 	// Report metrics
-	b.SetBytes(int64(bytesRead / b.N))
-	b.ReportMetric(float64(bytesRead/b.N)/1000.0/1000.0, "MB_io/op")
-	b.ReportMetric(float64((block.count+r.Count)/int64(b.N)), "reads/op")
-	b.ReportMetric(float64(spansMatched/b.N), "spans/op")
-	b.ReportMetric(float64(tracesMatched/b.N), "traces/op")
+	totalBytes := bytesRead + r.BytesRead
+	b.SetBytes(int64(totalBytes / b.N))
+	b.ReportMetric(float64(totalBytes)/float64(b.N)/1000.0/1000.0, "MB_io/op")
+	totalCount := block.count + r.ReadCount
+	b.ReportMetric(float64(totalCount)/float64(b.N), "reads/op")
+	b.ReportMetric(float64(spansMatched)/float64(b.N), "spans/op")
+	b.ReportMetric(float64(tracesMatched)/float64(b.N), "traces/op")
 	b.ReportMetric(float64(rnCount/b.N), "index_rn")
 }
 
