@@ -1128,7 +1128,7 @@ func BenchmarkBackendBlockTraceQL(b *testing.B) {
 				}
 				bytesRead += int(resp.Metrics.InspectedBytes)
 			}
-			b.SetBytes(int64(bytesRead / b.N))
+			// b.SetBytes(int64(bytesRead / b.N))
 			b.ReportMetric(float64(bytesRead)/float64(b.N)/1000.0/1000.0, "MB_io/op")
 			b.ReportMetric(float64(block.count)/float64(b.N), "reads/op")
 			b.ReportMetric(float64(spansMatched)/float64(b.N), "spans/op")
