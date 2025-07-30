@@ -595,7 +595,7 @@ func (c *SyncIterator) seekPages(seekTo RowNumber, definitionLevel int) (done bo
 		// If we are seeking within a range that we already read, this leads to additional calls to
 		// the backend. Therefore, we only call seek when we can assume that we are jumping more
 		// than two pages.
-		if c.useSeekTo && skips > c.pageRowsMax*2 {
+		if c.useSeekTo { // && skips > c.pageRowsMax*2 {
 			rgOffset := c.currRowGroupMin[0] + 1
 			rowInRG := seekTo[0] - rgOffset
 
