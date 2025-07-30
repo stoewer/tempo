@@ -51,7 +51,7 @@ func BenchmarkIndexIterators(b *testing.B) {
 	results := 0
 
 	for range b.N {
-		iter := NewIndexIterator(makeIter, 0, "aws_region", "us_east_1")
+		iter := NewIndexIterator(makeIter, 0, "span", "aws_region", "us_east_1")
 
 		res, err = iter.Next()
 		if err != nil {
@@ -150,7 +150,7 @@ func BenchmarkBackendBlockQueryRangeIndex(b *testing.B) {
 		// Index lookup
 		var res *IndexResult
 		if indexLookup {
-			iter := NewIndexIterator(makeIter, 0, attrKey, attrValue)
+			iter := NewIndexIterator(makeIter, 0, attrScope, attrKey, attrValue)
 
 			res, err = iter.Next()
 			if err != nil {
@@ -232,7 +232,7 @@ func BenchmarkBackendBlockTraceQLIndex(b *testing.B) {
 		// Index lookup
 		var res *IndexResult
 		if indexLookup {
-			iter := NewIndexIterator(makeIter, 0, attrKey, attrValue)
+			iter := NewIndexIterator(makeIter, 0, attrScope, attrKey, attrValue)
 
 			res, err = iter.Next()
 			if err != nil {

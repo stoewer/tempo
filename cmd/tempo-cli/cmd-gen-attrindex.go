@@ -8,7 +8,6 @@ import (
 	"hash/fnv"
 	"io"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,6 +19,7 @@ import (
 	"github.com/parquet-go/parquet-go"
 
 	pq "github.com/grafana/tempo/pkg/parquetquery"
+	"github.com/grafana/tempo/pkg/traceql"
 	"github.com/grafana/tempo/tempodb/backend"
 	vp4 "github.com/grafana/tempo/tempodb/encoding/vparquet4"
 )
@@ -55,7 +55,6 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 		return err
 	}
 	stats.printStats()
-	stats.printRandomAttributes(10, 10)
 
 	numRowGroups := estimateRowGroups(stats)
 
@@ -123,7 +122,7 @@ func (cmd *attrIndexCmd) collectAttributeStats() (*fileStats, error) {
 			}
 			break
 		}
-		runtime.GC() // after reading the new traces to the buffer GC can free the old ones
+		runtime.GC() // after reading the new traces to the buffer, GC can free the old ones
 
 		if readCount > 0 {
 			cmd.collectAttributeStatsForTraces(&stats, traceBuffer[:readCount])
@@ -149,29 +148,29 @@ func (cmd *attrIndexCmd) collectAttributeStatsForTraces(stats *fileStats, traces
 			row.Next(1, 1, 3)
 
 			res := rs.Resource
-			stats.addAttributes(row, scopeResource, res.Attrs)
-			stats.addDedicatedAttributes(row, scopeResource, cmd.dedicatedRes, &res.DedicatedAttributes)
+			stats.addAttributes(row, traceql.AttributeScopeResource, res.Attrs)
+			stats.addDedicatedAttributes(row, traceql.AttributeScopeResource, cmd.dedicatedRes, &res.DedicatedAttributes)
 
-			stats.addAttribute(row, scopeResource, "service.name", res.ServiceName)
-			stats.addAttribute(row, scopeResource, "cluster", res.Cluster)
-			stats.addAttribute(row, scopeResource, "namespace", res.Namespace)
-			stats.addAttribute(row, scopeResource, "pod", res.Pod)
-			stats.addAttribute(row, scopeResource, "container", res.Container)
-			stats.addAttribute(row, scopeResource, "k8s.cluster.name", res.K8sClusterName)
-			stats.addAttribute(row, scopeResource, "k8s.namespace.name", res.K8sNamespaceName)
-			stats.addAttribute(row, scopeResource, "k8s.pod.name", res.K8sPodName)
-			stats.addAttribute(row, scopeResource, "k8s.container.name", res.K8sContainerName)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "service.name", res.ServiceName)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "cluster", res.Cluster)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "namespace", res.Namespace)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "pod", res.Pod)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "container", res.Container)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "k8s.cluster.name", res.K8sClusterName)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "k8s.namespace.name", res.K8sNamespaceName)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "k8s.pod.name", res.K8sPodName)
+			stats.addAttribute(row, traceql.AttributeScopeResource, "k8s.container.name", res.K8sContainerName)
 			for _, ss := range rs.ScopeSpans {
 				row.Next(2, 2, 3)
 
 				scope := ss.Scope
 				stats.Spans += len(ss.Spans)
 
-				stats.addAttributes(row, scopeScope, scope.Attrs)
+				stats.addAttributes(row, traceql.AttributeScopeInstrumentation, scope.Attrs)
 				if cmd.AddIntrinsics {
 					// adding scope to distinguish from span.name
-					stats.addAttribute(row, scopeScope, "scope.name", scope.Name)
-					stats.addAttribute(row, scopeScope, "version", scope.Version)
+					stats.addAttribute(row, traceql.AttributeScopeInstrumentation, "scope.name", scope.Name)
+					stats.addAttribute(row, traceql.AttributeScopeInstrumentation, "version", scope.Version)
 				}
 				for _, sp := range ss.Spans {
 					row.Next(3, 3, 3)
@@ -179,26 +178,26 @@ func (cmd *attrIndexCmd) collectAttributeStatsForTraces(stats *fileStats, traces
 					stats.Events += len(sp.Events)
 					stats.Links += len(sp.Links)
 
-					stats.addAttributes(row, scopeSpan, sp.Attrs)
-					stats.addDedicatedAttributes(row, scopeSpan, cmd.dedicatedSpan, &sp.DedicatedAttributes)
-					stats.addAttribute(row, scopeSpan, "http.method", sp.HttpMethod)
-					stats.addAttribute(row, scopeSpan, "http.url", sp.HttpUrl)
-					stats.addAttribute(row, scopeSpan, "http.status_code", sp.HttpStatusCode)
+					stats.addAttributes(row, traceql.AttributeScopeSpan, sp.Attrs)
+					stats.addDedicatedAttributes(row, traceql.AttributeScopeSpan, cmd.dedicatedSpan, &sp.DedicatedAttributes)
+					stats.addAttribute(row, traceql.AttributeScopeSpan, "http.method", sp.HttpMethod)
+					stats.addAttribute(row, traceql.AttributeScopeSpan, "http.url", sp.HttpUrl)
+					stats.addAttribute(row, traceql.AttributeScopeSpan, "http.status_code", sp.HttpStatusCode)
 					if cmd.AddIntrinsics {
-						stats.addAttribute(row, scopeSpan, "name", sp.Name)
-						stats.addAttribute(row, scopeSpan, "kind", sp.Kind)
-						stats.addAttribute(row, scopeSpan, "status.code", sp.StatusCode)
-						stats.addAttribute(row, scopeSpan, "status.message", sp.StatusMessage)
+						stats.addAttribute(row, traceql.AttributeScopeSpan, "name", sp.Name)
+						stats.addAttribute(row, traceql.AttributeScopeSpan, "kind", sp.Kind)
+						stats.addAttribute(row, traceql.AttributeScopeSpan, "status.code", sp.StatusCode)
+						stats.addAttribute(row, traceql.AttributeScopeSpan, "status.message", sp.StatusMessage)
 					}
 					for _, ev := range sp.Events {
-						stats.addAttributes(row, scopeEvent, ev.Attrs)
+						stats.addAttributes(row, traceql.AttributeScopeEvent, ev.Attrs)
 						if cmd.AddIntrinsics {
 							// adding scope to distinguish from span.name
-							stats.addAttribute(row, scopeEvent, "event.name", ev.Name)
+							stats.addAttribute(row, traceql.AttributeScopeEvent, "event.name", ev.Name)
 						}
 					}
 					for _, ln := range sp.Links {
-						stats.addAttributes(row, scopeLink, ln.Attrs)
+						stats.addAttributes(row, traceql.AttributeScopeLink, ln.Attrs)
 					}
 				}
 			}
@@ -225,57 +224,79 @@ func (fs *fileStats) printStats() {
 		attrs = append(attrs, attr)
 	}
 	sort.Slice(attrs, func(i, j int) bool {
-		if n := cmp.Compare(attrs[i].ScopeMask, attrs[j].ScopeMask); n != 0 {
-			return n < 0
+		var iCount, jCount int
+		for _, s := range attrs[i].Scopes {
+			iCount += s.Count
 		}
-		return attrs[i].Count > attrs[j].Count
+		for _, s := range attrs[j].Scopes {
+			jCount += s.Count
+		}
+		return iCount > jCount
 	})
 
-	fmt.Println("\nAttribute stats:")
+	const maxAttrPrints = 500
+
+	fmt.Printf("\nAttribute stats (%d most frequent):\n", maxAttrPrints)
 	w = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.DiscardEmptyColumns)
-	_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", "Name", "Scopes", "Count", "Cardinality")
-	tmpl = "%s\t%s\t%d\t%d\n"
-	for _, attr := range attrs {
-		_, _ = fmt.Fprintf(w, tmpl, attr.Key, attr.ScopeMask.String(), attr.Count, len(attr.ValuesString)+len(attr.ValuesInt)+len(attr.ValuesFloat)+len(attr.ValuesBool))
+	_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", "Name", "Scope", "Count", "Cardinality", "Most common value", "Occurrence")
+	tmpl = "%s\t%s\t%d\t%d\t%v\t%d\n"
+
+	var attrCount int
+	for _, a := range attrs {
+		if attrCount > maxAttrPrints {
+			break
+		}
+		attrCount++
+		for _, s := range a.Scopes {
+			var (
+				mostCommonVal any
+				occurrence    int
+			)
+
+			for _, v := range s.ValuesString {
+				if len(v.RowNumbers) > occurrence {
+					mostCommonVal = v.Value[0]
+					occurrence = len(v.RowNumbers)
+				}
+			}
+			if mostCommonVal != nil {
+				str := mostCommonVal.(string)
+				str = strings.ReplaceAll(str, "\n", " ")
+				if len(str) > 50 {
+					str = fmt.Sprintf("%s...", str[:47])
+				}
+				mostCommonVal = str
+			}
+			if mostCommonVal == nil {
+				for _, v := range s.ValuesInt {
+					if len(v.RowNumbers) > occurrence {
+						mostCommonVal = v.Value[0]
+						occurrence = len(v.RowNumbers)
+					}
+				}
+			}
+			if mostCommonVal == nil {
+				for _, v := range s.ValuesFloat {
+					if len(v.RowNumbers) > occurrence {
+						mostCommonVal = v.Value[0]
+						occurrence = len(v.RowNumbers)
+					}
+				}
+			}
+			if mostCommonVal == nil {
+				for _, v := range s.ValuesBool {
+					if len(v.RowNumbers) > occurrence {
+						mostCommonVal = v.Value[0]
+						occurrence = len(v.RowNumbers)
+					}
+				}
+			}
+			_, _ = fmt.Fprintf(w, tmpl, a.Key, s.Scope.String(), s.Count, len(s.ValuesString)+len(s.ValuesInt)+len(s.ValuesFloat)+len(s.ValuesBool), mostCommonVal, occurrence)
+		}
 	}
 	_ = w.Flush()
 
 	fmt.Printf("\n\n")
-}
-
-func (fs *fileStats) printRandomAttributes(n, minCardinality int) {
-	fmt.Printf("Printing random %d attributes:\n", n)
-	keys := make([]string, 0, len(fs.Attributes))
-	vals := make([]string, 0, 1000)
-
-	for k, _ := range fs.Attributes {
-		keys = append(keys, k)
-	}
-
-	count := 0
-	for count < n {
-		attr := fs.Attributes[keys[rand.Intn(len(keys))]]
-
-		if len(attr.ValuesString) < minCardinality {
-			continue
-		}
-
-		vals = vals[:0]
-		for _, v := range attr.ValuesString {
-			if len(v.Value) != 1 {
-				continue
-			}
-			vals = append(vals, v.Value[0])
-		}
-		if len(vals) < minCardinality {
-			continue
-		}
-		count++
-
-		val := vals[rand.Intn(len(vals))]
-		fmt.Printf("%s=%s (cardinality %d)\n", attr.Key, val, len(vals))
-	}
-	fmt.Println()
 }
 
 func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
@@ -288,97 +309,113 @@ func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
 		keyCode++
 
 		a := indexedAttrCombined{
-			Key:       attr.Key,
-			KeyCode:   keyCode,
-			ScopeMask: attr.ScopeMask,
+			Key:     attr.Key,
+			KeyCode: keyCode,
+			Scopes:  make([]indexedScopeCombined, 0, len(attr.Scopes)),
 		}
 
-		if len(attr.ValuesString) > 0 {
-			a.ValuesString = make([]indexedValCombined[string], 0, len(attr.ValuesString))
+		for _, scope := range attr.Scopes {
+			s := indexedScopeCombined{
+				Scope: int64(scope.Scope),
+			}
 
-			for _, v := range attr.ValuesString {
-				a.ValuesString = append(a.ValuesString, indexedValCombined[string]{
-					Value:      v.Value,
-					RowNumbers: v.RowNumbers,
+			if len(scope.ValuesString) > 0 {
+				s.ValuesString = make([]indexedValCombined[string], 0, len(scope.ValuesString))
+
+				for _, v := range scope.ValuesString {
+					s.ValuesString = append(s.ValuesString, indexedValCombined[string]{
+						Value:      v.Value,
+						RowNumbers: v.RowNumbers,
+					})
+				}
+
+				sort.Slice(s.ValuesString, func(i, j int) bool {
+					return cmpSlice(s.ValuesString[i].Value, s.ValuesString[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesString {
+					valueCode++
+					s.ValuesString[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesString, func(i, j int) bool {
-				return cmpSlice(a.ValuesString[i].Value, a.ValuesString[j].Value) < 0
-			})
+			if len(scope.ValuesInt) > 0 {
+				s.ValuesInt = make([]indexedValCombined[int64], 0, len(scope.ValuesInt))
 
-			var valueCode int64
-			for i := range a.ValuesString {
-				valueCode++
-				a.ValuesString[i].ValueCode = valueCode
-			}
-		}
+				for _, v := range scope.ValuesInt {
+					s.ValuesInt = append(s.ValuesInt, indexedValCombined[int64]{
+						Value:      v.Value,
+						RowNumbers: v.RowNumbers,
+					})
+				}
 
-		if len(attr.ValuesInt) > 0 {
-			a.ValuesInt = make([]indexedValCombined[int64], 0, len(attr.ValuesInt))
-
-			for _, v := range attr.ValuesInt {
-				a.ValuesInt = append(a.ValuesInt, indexedValCombined[int64]{
-					Value:      v.Value,
-					RowNumbers: v.RowNumbers,
+				sort.Slice(s.ValuesInt, func(i, j int) bool {
+					return cmpSlice(s.ValuesInt[i].Value, s.ValuesInt[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesInt {
+					valueCode++
+					s.ValuesInt[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesInt, func(i, j int) bool {
-				return cmpSlice(a.ValuesInt[i].Value, a.ValuesInt[j].Value) < 0
-			})
+			if len(scope.ValuesFloat) > 0 {
+				s.ValuesFloat = make([]indexedValCombined[float64], 0, len(scope.ValuesFloat))
 
-			var valueCode int64
-			for i := range a.ValuesInt {
-				valueCode++
-				a.ValuesInt[i].ValueCode = valueCode
-			}
-		}
+				for _, v := range scope.ValuesFloat {
+					s.ValuesFloat = append(s.ValuesFloat, indexedValCombined[float64]{
+						Value:      v.Value,
+						RowNumbers: v.RowNumbers,
+					})
+				}
 
-		if len(attr.ValuesFloat) > 0 {
-			a.ValuesFloat = make([]indexedValCombined[float64], 0, len(attr.ValuesFloat))
-
-			for _, v := range attr.ValuesFloat {
-				a.ValuesFloat = append(a.ValuesFloat, indexedValCombined[float64]{
-					Value:      v.Value,
-					RowNumbers: v.RowNumbers,
+				sort.Slice(s.ValuesFloat, func(i, j int) bool {
+					return cmpSlice(s.ValuesFloat[i].Value, s.ValuesFloat[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesFloat {
+					valueCode++
+					s.ValuesFloat[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesFloat, func(i, j int) bool {
-				return cmpSlice(a.ValuesFloat[i].Value, a.ValuesFloat[j].Value) < 0
-			})
+			if len(scope.ValuesBool) > 0 {
+				s.ValuesBool = make([]indexedValCombined[bool], 0, len(scope.ValuesBool))
 
-			var valueCode int64
-			for i := range a.ValuesFloat {
-				valueCode++
-				a.ValuesFloat[i].ValueCode = valueCode
-			}
-		}
+				for _, v := range scope.ValuesBool {
+					s.ValuesBool = append(s.ValuesBool, indexedValCombined[bool]{
+						Value:      v.Value,
+						RowNumbers: v.RowNumbers,
+					})
+				}
 
-		if len(attr.ValuesBool) > 0 {
-			a.ValuesBool = make([]indexedValCombined[bool], 0, len(attr.ValuesBool))
-
-			for _, v := range attr.ValuesBool {
-				a.ValuesBool = append(a.ValuesBool, indexedValCombined[bool]{
-					Value:      v.Value,
-					RowNumbers: v.RowNumbers,
+				sort.Slice(s.ValuesBool, func(i, j int) bool {
+					return cmpSliceBool(s.ValuesBool[i].Value, s.ValuesBool[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesBool {
+					valueCode++
+					s.ValuesBool[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesBool, func(i, j int) bool {
-				return cmpSliceBool(a.ValuesBool[i].Value, a.ValuesBool[j].Value) < 0
-			})
-
-			var valueCode int64
-			for i := range a.ValuesBool {
-				valueCode++
-				a.ValuesBool[i].ValueCode = valueCode
-			}
+			a.Scopes = append(a.Scopes, s)
 		}
+
+		sort.Slice(a.Scopes, func(i, j int) bool {
+			return a.Scopes[i].Scope < a.Scopes[j].Scope
+		})
 
 		index = append(index, a)
 	}
+
+	sort.Slice(index, func(i, j int) bool {
+		return strings.Compare(index[i].Key, index[j].Key) < 0
+	})
 
 	return index
 }
@@ -393,60 +430,76 @@ func generateRowsIndex(stats *fileStats) []indexedAttrRows {
 		keyCode++
 
 		a := indexedAttrRows{
-			Key:       attr.Key,
-			ScopeMask: attr.ScopeMask,
+			Key:    attr.Key,
+			Scopes: make([]indexedScopeRows, 0, len(attr.Scopes)),
 		}
 
-		if len(attr.ValuesString) > 0 {
-			a.ValuesString = make([]indexedValRows[string], 0, len(attr.ValuesString))
-
-			for _, v := range attr.ValuesString {
-				a.ValuesString = append(a.ValuesString, indexedValRows[string](v))
+		for _, scope := range attr.Scopes {
+			s := indexedScopeRows{
+				Scope: int64(scope.Scope),
 			}
 
-			sort.Slice(a.ValuesString, func(i, j int) bool {
-				return cmpSlice(a.ValuesString[i].Value, a.ValuesString[j].Value) < 0
-			})
-		}
+			if len(scope.ValuesString) > 0 {
+				s.ValuesString = make([]indexedValRows[string], 0, len(scope.ValuesString))
 
-		if len(attr.ValuesInt) > 0 {
-			a.ValuesInt = make([]indexedValRows[int64], 0, len(attr.ValuesInt))
+				for _, v := range scope.ValuesString {
+					s.ValuesString = append(s.ValuesString, indexedValRows[string](v))
+				}
 
-			for _, v := range attr.ValuesInt {
-				a.ValuesInt = append(a.ValuesInt, indexedValRows[int64](v))
+				sort.Slice(s.ValuesString, func(i, j int) bool {
+					return cmpSlice(s.ValuesString[i].Value, s.ValuesString[j].Value) < 0
+				})
 			}
 
-			sort.Slice(a.ValuesInt, func(i, j int) bool {
-				return cmpSlice(a.ValuesInt[i].Value, a.ValuesInt[j].Value) < 0
-			})
-		}
+			if len(scope.ValuesInt) > 0 {
+				s.ValuesInt = make([]indexedValRows[int64], 0, len(scope.ValuesInt))
 
-		if len(attr.ValuesFloat) > 0 {
-			a.ValuesFloat = make([]indexedValRows[float64], 0, len(attr.ValuesFloat))
+				for _, v := range scope.ValuesInt {
+					s.ValuesInt = append(s.ValuesInt, indexedValRows[int64](v))
+				}
 
-			for _, v := range attr.ValuesFloat {
-				a.ValuesFloat = append(a.ValuesFloat, indexedValRows[float64](v))
+				sort.Slice(s.ValuesInt, func(i, j int) bool {
+					return cmpSlice(s.ValuesInt[i].Value, s.ValuesInt[j].Value) < 0
+				})
 			}
 
-			sort.Slice(a.ValuesFloat, func(i, j int) bool {
-				return cmpSlice(a.ValuesFloat[i].Value, a.ValuesFloat[j].Value) < 0
-			})
-		}
+			if len(scope.ValuesFloat) > 0 {
+				s.ValuesFloat = make([]indexedValRows[float64], 0, len(scope.ValuesFloat))
 
-		if len(attr.ValuesBool) > 0 {
-			a.ValuesBool = make([]indexedValRows[bool], 0, len(attr.ValuesBool))
+				for _, v := range scope.ValuesFloat {
+					s.ValuesFloat = append(s.ValuesFloat, indexedValRows[float64](v))
+				}
 
-			for _, v := range attr.ValuesBool {
-				a.ValuesBool = append(a.ValuesBool, indexedValRows[bool](v))
+				sort.Slice(s.ValuesFloat, func(i, j int) bool {
+					return cmpSlice(s.ValuesFloat[i].Value, s.ValuesFloat[j].Value) < 0
+				})
 			}
 
-			sort.Slice(a.ValuesBool, func(i, j int) bool {
-				return cmpSliceBool(a.ValuesBool[i].Value, a.ValuesBool[j].Value) < 0
-			})
+			if len(scope.ValuesBool) > 0 {
+				s.ValuesBool = make([]indexedValRows[bool], 0, len(scope.ValuesBool))
+
+				for _, v := range scope.ValuesBool {
+					s.ValuesBool = append(s.ValuesBool, indexedValRows[bool](v))
+				}
+
+				sort.Slice(s.ValuesBool, func(i, j int) bool {
+					return cmpSliceBool(s.ValuesBool[i].Value, s.ValuesBool[j].Value) < 0
+				})
+			}
+
+			a.Scopes = append(a.Scopes, s)
 		}
+
+		sort.Slice(a.Scopes, func(i, j int) bool {
+			return a.Scopes[i].Scope < a.Scopes[j].Scope
+		})
 
 		index = append(index, a)
 	}
+
+	sort.Slice(index, func(i, j int) bool {
+		return strings.Compare(index[i].Key, index[j].Key) < 0
+	})
 
 	return index
 }
@@ -461,101 +514,121 @@ func generateCodesIndex(stats *fileStats) []indexedAttrCodes {
 		keyCode++
 
 		a := indexedAttrCodes{
-			Key:       attr.Key,
-			KeyCode:   keyCode,
-			ScopeMask: attr.ScopeMask,
+			Key:     attr.Key,
+			KeyCode: keyCode,
+			Scopes:  make([]indexScopeCodes, 0, len(attr.Scopes)),
 		}
 
-		if len(attr.ValuesString) > 0 {
-			a.ValuesString = make([]indexedValCodes[string], 0, len(attr.ValuesString))
+		for _, scope := range attr.Scopes {
+			s := indexScopeCodes{
+				Scope: int64(scope.Scope),
+			}
 
-			for _, v := range attr.ValuesString {
-				a.ValuesString = append(a.ValuesString, indexedValCodes[string]{
-					Value: v.Value,
+			if len(scope.ValuesString) > 0 {
+				s.ValuesString = make([]indexedValCodes[string], 0, len(scope.ValuesString))
+
+				for _, v := range scope.ValuesString {
+					s.ValuesString = append(s.ValuesString, indexedValCodes[string]{
+						Value: v.Value,
+					})
+				}
+
+				sort.Slice(s.ValuesString, func(i, j int) bool {
+					return cmpSlice(s.ValuesString[i].Value, s.ValuesString[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesString {
+					valueCode++
+					s.ValuesString[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesString, func(i, j int) bool {
-				return cmpSlice(a.ValuesString[i].Value, a.ValuesString[j].Value) < 0
-			})
+			if len(scope.ValuesInt) > 0 {
+				s.ValuesInt = make([]indexedValCodes[int64], 0, len(scope.ValuesInt))
 
-			var valueCode int64
-			for i := range a.ValuesString {
-				valueCode++
-				a.ValuesString[i].ValueCode = valueCode
-			}
-		}
+				for _, v := range scope.ValuesInt {
+					s.ValuesInt = append(s.ValuesInt, indexedValCodes[int64]{
+						Value: v.Value,
+					})
+				}
 
-		if len(attr.ValuesInt) > 0 {
-			a.ValuesInt = make([]indexedValCodes[int64], 0, len(attr.ValuesInt))
-
-			for _, v := range attr.ValuesInt {
-				a.ValuesInt = append(a.ValuesInt, indexedValCodes[int64]{
-					Value: v.Value,
+				sort.Slice(s.ValuesInt, func(i, j int) bool {
+					return cmpSlice(s.ValuesInt[i].Value, s.ValuesInt[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesInt {
+					valueCode++
+					s.ValuesInt[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesInt, func(i, j int) bool {
-				return cmpSlice(a.ValuesInt[i].Value, a.ValuesInt[j].Value) < 0
-			})
+			if len(scope.ValuesFloat) > 0 {
+				s.ValuesFloat = make([]indexedValCodes[float64], 0, len(scope.ValuesFloat))
 
-			var valueCode int64
-			for i := range a.ValuesInt {
-				valueCode++
-				a.ValuesInt[i].ValueCode = valueCode
-			}
-		}
+				for _, v := range scope.ValuesFloat {
+					s.ValuesFloat = append(s.ValuesFloat, indexedValCodes[float64]{
+						Value: v.Value,
+					})
+				}
 
-		if len(attr.ValuesFloat) > 0 {
-			a.ValuesFloat = make([]indexedValCodes[float64], 0, len(attr.ValuesFloat))
-
-			for _, v := range attr.ValuesFloat {
-				a.ValuesFloat = append(a.ValuesFloat, indexedValCodes[float64]{
-					Value: v.Value,
+				sort.Slice(s.ValuesFloat, func(i, j int) bool {
+					return cmpSlice(s.ValuesFloat[i].Value, s.ValuesFloat[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesFloat {
+					valueCode++
+					s.ValuesFloat[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesFloat, func(i, j int) bool {
-				return cmpSlice(a.ValuesFloat[i].Value, a.ValuesFloat[j].Value) < 0
-			})
+			if len(scope.ValuesBool) > 0 {
+				s.ValuesBool = make([]indexedValCodes[bool], 0, len(scope.ValuesBool))
 
-			var valueCode int64
-			for i := range a.ValuesFloat {
-				valueCode++
-				a.ValuesFloat[i].ValueCode = valueCode
-			}
-		}
+				for _, v := range scope.ValuesBool {
+					s.ValuesBool = append(s.ValuesBool, indexedValCodes[bool]{
+						Value: v.Value,
+					})
+				}
 
-		if len(attr.ValuesBool) > 0 {
-			a.ValuesBool = make([]indexedValCodes[bool], 0, len(attr.ValuesBool))
-
-			for _, v := range attr.ValuesBool {
-				a.ValuesBool = append(a.ValuesBool, indexedValCodes[bool]{
-					Value: v.Value,
+				sort.Slice(s.ValuesBool, func(i, j int) bool {
+					return cmpSliceBool(s.ValuesBool[i].Value, s.ValuesBool[j].Value) < 0
 				})
+
+				var valueCode int64
+				for i := range s.ValuesBool {
+					valueCode++
+					s.ValuesBool[i].ValueCode = valueCode
+				}
 			}
 
-			sort.Slice(a.ValuesBool, func(i, j int) bool {
-				return cmpSliceBool(a.ValuesBool[i].Value, a.ValuesBool[j].Value) < 0
-			})
-
-			var valueCode int64
-			for i := range a.ValuesBool {
-				valueCode++
-				a.ValuesBool[i].ValueCode = valueCode
-			}
+			a.Scopes = append(a.Scopes, s)
 		}
+
+		sort.Slice(a.Scopes, func(i, j int) bool {
+			return a.Scopes[i].Scope < a.Scopes[j].Scope
+		})
 
 		index = append(index, a)
 	}
+
+	sort.Slice(index, func(i, j int) bool {
+		return strings.Compare(index[i].Key, index[j].Key) < 0
+	})
 
 	return index
 }
 
 type indexedAttrCombined struct {
-	Key          string                        `parquet:",snappy"`
-	KeyCode      int64                         `parquet:",snappy,delta"`
-	ScopeMask    scopeMask                     `parquet:",snappy,delta"`
+	Key     string                 `parquet:",snappy"`
+	KeyCode int64                  `parquet:",snappy,delta"`
+	Scopes  []indexedScopeCombined `parquet:",list"`
+}
+
+type indexedScopeCombined struct {
+	Scope        int64                         `parquet:",snappy,delta"`
 	ValuesString []indexedValCombined[string]  `parquet:",list"`
 	ValuesInt    []indexedValCombined[int64]   `parquet:",list"`
 	ValuesFloat  []indexedValCombined[float64] `parquet:",list"`
@@ -569,8 +642,12 @@ type indexedValCombined[T comparable] struct {
 }
 
 type indexedAttrRows struct {
-	Key          string                    `parquet:",snappy"`
-	ScopeMask    scopeMask                 `parquet:",snappy,delta"`
+	Key    string             `parquet:",snappy"`
+	Scopes []indexedScopeRows `parquet:",list"`
+}
+
+type indexedScopeRows struct {
+	Scope        int64                     `parquet:",snappy,delta"`
 	ValuesString []indexedValRows[string]  `parquet:",list"`
 	ValuesInt    []indexedValRows[int64]   `parquet:",list"`
 	ValuesFloat  []indexedValRows[float64] `parquet:",list"`
@@ -583,9 +660,13 @@ type indexedValRows[T comparable] struct {
 }
 
 type indexedAttrCodes struct {
-	Key          string                     `parquet:",snappy"`
-	KeyCode      int64                      `parquet:",snappy,delta"`
-	ScopeMask    scopeMask                  `parquet:",snappy,delta"`
+	Key     string            `parquet:",snappy"`
+	KeyCode int64             `parquet:",snappy,delta"`
+	Scopes  []indexScopeCodes `parquet:",list"`
+}
+
+type indexScopeCodes struct {
+	Scope        int64                      `parquet:",snappy,delta"`
 	ValuesString []indexedValCodes[string]  `parquet:",list"`
 	ValuesInt    []indexedValCodes[int64]   `parquet:",list"`
 	ValuesFloat  []indexedValCodes[float64] `parquet:",list"`
@@ -665,9 +746,13 @@ type fileStats struct {
 }
 
 type attributeInfo struct {
-	Key          string
-	ScopeMask    scopeMask
-	Count        int64
+	Key    string
+	Scopes map[traceql.AttributeScope]attributeInfoScope
+}
+
+type attributeInfoScope struct {
+	Scope        traceql.AttributeScope
+	Count        int
 	ValuesString map[uint64]valueInfo[string]
 	ValuesInt    map[uint64]valueInfo[int64]
 	ValuesFloat  map[uint64]valueInfo[float64]
@@ -679,7 +764,7 @@ type valueInfo[T comparable] struct {
 	RowNumbers []rowNumberCols
 }
 
-func (fs *fileStats) addAttributes(row pq.RowNumber, scope scopeMask, attrs []vp4.Attribute) {
+func (fs *fileStats) addAttributes(row pq.RowNumber, scope traceql.AttributeScope, attrs []vp4.Attribute) {
 	for _, attr := range attrs {
 		if attr.IsArray {
 			fs.addAttribute(row, scope, attr.Key, attr.Value)
@@ -696,7 +781,7 @@ func (fs *fileStats) addAttributes(row pq.RowNumber, scope scopeMask, attrs []vp
 	}
 }
 
-func (fs *fileStats) addDedicatedAttributes(row pq.RowNumber, scope scopeMask, columns []string, attrs *vp4.DedicatedAttributes) {
+func (fs *fileStats) addDedicatedAttributes(row pq.RowNumber, scope traceql.AttributeScope, columns []string, attrs *vp4.DedicatedAttributes) {
 	if attrs == nil {
 		return
 	}
@@ -733,17 +818,23 @@ func (fs *fileStats) addDedicatedAttributes(row pq.RowNumber, scope scopeMask, c
 	}
 }
 
-func (fs *fileStats) addAttribute(row pq.RowNumber, scope scopeMask, key string, value any) {
-	attr, ok := fs.Attributes[key]
+func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope, key string, value any) {
+	attrInfo, ok := fs.Attributes[key]
 	if !ok {
-		attr = attributeInfo{
-			Key:       key,
-			ScopeMask: scope,
+		attrInfo = attributeInfo{
+			Key:    key,
+			Scopes: make(map[traceql.AttributeScope]attributeInfoScope),
 		}
 	}
 
-	attr.Count++
-	attr.ScopeMask.Add(scope)
+	scopeInfo, ok := attrInfo.Scopes[scope]
+	if !ok {
+		scopeInfo = attributeInfoScope{
+			Scope: scope,
+		}
+	}
+
+	scopeInfo.Count++
 
 	switch value := value.(type) {
 	case string, *string, []string:
@@ -751,12 +842,12 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope scopeMask, key string,
 		if len(s) == 0 {
 			return
 		}
-		if attr.ValuesString == nil {
-			attr.ValuesString = make(map[uint64]valueInfo[string], 10)
+		if scopeInfo.ValuesString == nil {
+			scopeInfo.ValuesString = make(map[uint64]valueInfo[string], 10)
 		}
 
 		sum := fnvStrings(s)
-		info, ok := attr.ValuesString[sum]
+		info, ok := scopeInfo.ValuesString[sum]
 		if !ok {
 			info = valueInfo[string]{
 				Value:      s,
@@ -765,18 +856,18 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope scopeMask, key string,
 		}
 
 		info.RowNumbers = append(info.RowNumbers, toRowNumberCols(row))
-		attr.ValuesString[sum] = info
+		scopeInfo.ValuesString[sum] = info
 	case int64, *int64, []int64:
 		s := toSlice[int64](value)
 		if len(s) == 0 {
 			return
 		}
-		if attr.ValuesInt == nil {
-			attr.ValuesInt = make(map[uint64]valueInfo[int64], 10)
+		if scopeInfo.ValuesInt == nil {
+			scopeInfo.ValuesInt = make(map[uint64]valueInfo[int64], 10)
 		}
 
 		sum := fnvInts(s)
-		v, ok := attr.ValuesInt[sum]
+		v, ok := scopeInfo.ValuesInt[sum]
 		if !ok {
 			v = valueInfo[int64]{
 				Value:      s,
@@ -784,18 +875,18 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope scopeMask, key string,
 			}
 		}
 		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
-		attr.ValuesInt[sum] = v
+		scopeInfo.ValuesInt[sum] = v
 	case float64, *float64, []float64:
 		s := toSlice[float64](value)
 		if len(s) == 0 {
 			return
 		}
-		if attr.ValuesFloat == nil {
-			attr.ValuesFloat = make(map[uint64]valueInfo[float64])
+		if scopeInfo.ValuesFloat == nil {
+			scopeInfo.ValuesFloat = make(map[uint64]valueInfo[float64])
 		}
 
 		sum := fnvFloats(s)
-		v, ok := attr.ValuesFloat[sum]
+		v, ok := scopeInfo.ValuesFloat[sum]
 		if !ok {
 			v = valueInfo[float64]{
 				Value:      s,
@@ -803,18 +894,18 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope scopeMask, key string,
 			}
 		}
 		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
-		attr.ValuesFloat[sum] = v
+		scopeInfo.ValuesFloat[sum] = v
 	case bool, *bool, []bool:
 		s := toSlice[bool](value)
 		if len(s) == 0 {
 			return
 		}
-		if attr.ValuesBool == nil {
-			attr.ValuesBool = make(map[uint64]valueInfo[bool])
+		if scopeInfo.ValuesBool == nil {
+			scopeInfo.ValuesBool = make(map[uint64]valueInfo[bool])
 		}
 
 		sum := fnvBools(s)
-		v, ok := attr.ValuesBool[sum]
+		v, ok := scopeInfo.ValuesBool[sum]
 		if !ok {
 			v = valueInfo[bool]{
 				Value:      s,
@@ -822,53 +913,11 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope scopeMask, key string,
 			}
 		}
 		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
-		attr.ValuesBool[sum] = v
+		scopeInfo.ValuesBool[sum] = v
 	}
 
-	fs.Attributes[key] = attr
-}
-
-type scopeMask int64
-
-const (
-	scopeResource = 1 << iota
-	scopeScope
-	scopeSpan
-	scopeEvent
-	scopeLink
-)
-
-var scopeMap = [5]struct {
-	mask scopeMask
-	name string
-}{
-	{scopeResource, "resource"},
-	{scopeScope, "scope"},
-	{scopeSpan, "span"},
-	{scopeEvent, "event"},
-	{scopeLink, "link"},
-}
-
-func (s *scopeMask) Add(o scopeMask) {
-	*s |= o
-}
-
-func (s *scopeMask) Has(o scopeMask) bool {
-	return *s&o != 0
-}
-
-func (s *scopeMask) Scopes() []string {
-	scopes := make([]string, 0, 5)
-	for _, scope := range scopeMap {
-		if s.Has(scope.mask) {
-			scopes = append(scopes, scope.name)
-		}
-	}
-	return scopes
-}
-
-func (s *scopeMask) String() string {
-	return strings.Join(s.Scopes(), " ")
+	attrInfo.Scopes[scope] = scopeInfo
+	fs.Attributes[key] = attrInfo
 }
 
 func toRowNumberCols(row pq.RowNumber) rowNumberCols {
@@ -959,20 +1008,28 @@ func cmpSliceBool(a, b []bool) int {
 	return cmp.Compare(len(a), len(b))
 }
 
-const magicUncompressedPageSize = 4_500_000
+const (
+	magicUncompressedPageSize = 4_500_000
+	minRowGroups              = 3
+)
 
 func estimateRowGroups(stats *fileStats) int {
 	var uncompressedValueSize int
 
 	for _, attr := range stats.Attributes {
-		for _, vals := range attr.ValuesString {
-			for _, val := range vals.Value {
-				uncompressedValueSize += len(val)
+		for _, scope := range attr.Scopes {
+			for _, vals := range scope.ValuesString {
+				for _, val := range vals.Value {
+					if uncompressedValueSize%100_000 == 0 {
+						uncompressedValueSize++
+					}
+					uncompressedValueSize += len(val)
+				}
 			}
 		}
 	}
 
 	// estimate 5 pages per RG
 	uncompressedRowGroupSize := magicUncompressedPageSize * 5
-	return uncompressedValueSize / uncompressedRowGroupSize
+	return max(uncompressedValueSize/uncompressedRowGroupSize, minRowGroups)
 }

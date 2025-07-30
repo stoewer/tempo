@@ -14,16 +14,17 @@ import (
 	"github.com/parquet-go/parquet-go"
 
 	pq "github.com/grafana/tempo/pkg/parquetquery"
+	"github.com/grafana/tempo/pkg/traceql"
 )
 
 const (
 	indexColKey                     = "Key"
-	indexColScopeMask               = "ScopeMask"
-	indexColVal                     = "ValuesString.list.element.Value"
-	indexColStringValRowNumbersLvl1 = "ValuesString.list.element.RowNumbers.Lvl01"
-	indexColStringValRowNumbersLvl2 = "ValuesString.list.element.RowNumbers.Lvl02"
-	indexColStringValRowNumbersLvl3 = "ValuesString.list.element.RowNumbers.Lvl03"
-	indexColStringValRowNumbersLvl4 = "ValuesString.list.element.RowNumbers.Lvl04"
+	indexColScop                    = "Scopes.list.element.Scope"
+	indexColVal                     = "Scopes.list.element.ValuesString.list.element.Value"
+	indexColStringValRowNumbersLvl1 = "Scopes.list.element.ValuesString.list.element.RowNumbers.Lvl01"
+	indexColStringValRowNumbersLvl2 = "Scopes.list.element.ValuesString.list.element.RowNumbers.Lvl02"
+	indexColStringValRowNumbersLvl3 = "Scopes.list.element.ValuesString.list.element.RowNumbers.Lvl03"
+	indexColStringValRowNumbersLvl4 = "Scopes.list.element.ValuesString.list.element.RowNumbers.Lvl04"
 
 	rowNumLvl1 = "Lvl01"
 	rowNumLvl2 = "Lvl02"
@@ -32,6 +33,7 @@ const (
 
 	entryResultKey    = "Result"
 	entryValueKey     = "Value"
+	entryScopeKey     = "Scope"
 	entryRowNumberKey = "RowNumber"
 )
 
@@ -55,15 +57,16 @@ func getIndexResult() *IndexResult {
 type IndexResult struct {
 	Key        string
 	Value      string
-	ScopeMask  int64
+	Scope      traceql.AttributeScope
 	RowNumbers []pq.RowNumber
 }
 
-func NewIndexIterator(makeIter makeIterFn, maxRowNums int, key, value string) *IndexIterator {
+func NewIndexIterator(makeIter makeIterFn, maxRowNums int, scope, key, value string) *IndexIterator {
+	scopeInt := int64(traceql.AttributeScopeFromString(scope))
 	return &IndexIterator{
 		keyIter:   makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
-		valIter:   makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
-		scopeIter: makeIter(indexColScopeMask, nil, indexColScopeMask),
+		valIter:   makeIter(indexColVal, pq.NewStringEqualPredicate([]byte(value)), entryValueKey),
+		scopeIter: makeIter(indexColScop, pq.NewIntEqualPredicate(scopeInt), entryScopeKey),
 		rowNumberIter: []pq.Iterator{
 			makeIter(indexColStringValRowNumbersLvl1, nil, entryRowNumberKey),
 			makeIter(indexColStringValRowNumbersLvl2, nil, entryRowNumberKey),
@@ -107,7 +110,6 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 	if res == nil {
 		return nil, nil
 	}
-
 	for _, e := range res.Entries {
 		if e.Key == indexColKey {
 			ires.Key = string(e.Value.ByteArray())
@@ -116,14 +118,27 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 	}
 
 	// Important: Currently this only works if there is a matching value in that row
-	res, err = ii.valIter.SeekTo(res.RowNumber, 0)
+	res, err = ii.scopeIter.SeekTo(res.RowNumber, 0)
 	if err != nil {
 		return nil, err
 	}
 	if res == nil {
 		return nil, nil
 	}
+	for _, e := range res.Entries {
+		if e.Key == entryScopeKey {
+			ires.Scope = traceql.AttributeScope(e.Value.Int64())
+			break
+		}
+	}
 
+	res, err = ii.valIter.SeekTo(res.RowNumber, 1)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, nil
+	}
 	ii.pos = res.RowNumber
 	for _, e := range res.Entries {
 		if e.Key == entryValueKey {
@@ -132,7 +147,11 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 		}
 	}
 
-	ires.RowNumbers = make([]pq.RowNumber, 0, ii.maxRowNums)
+	allocRN := ii.maxRowNums
+	if allocRN == 0 {
+		allocRN = 1024
+	}
+	ires.RowNumbers = make([]pq.RowNumber, 0, allocRN)
 
 	if ii.maxRowNums == 0 || len(ires.RowNumbers) < ii.maxRowNums {
 		var row pq.RowNumber
@@ -167,7 +186,7 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 		var row pq.RowNumber
 
 		for i, ri := range ii.rowNumberIter {
-			res, err = ri.SeekTo(ii.pos, 2)
+			res, err = ri.SeekTo(ii.pos, 3)
 			if err != nil {
 				return nil, err
 			}
@@ -185,7 +204,7 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 		ii.last.pos = res.RowNumber
 		ii.last.row = row
 
-		if pq.CompareRowNumbers(1, ii.pos, ii.last.pos) != 0 {
+		if pq.CompareRowNumbers(2, ii.pos, ii.last.pos) != 0 {
 			return &ires, nil
 		}
 
@@ -233,8 +252,8 @@ func (i indexCollector) KeepGroup(res *pq.IteratorResult) bool {
 		switch e.Key {
 		case indexColKey:
 			idx.Key = string(e.Value.ByteArray())
-		case indexColScopeMask:
-			idx.ScopeMask = e.Value.Int64()
+		case entryScopeKey:
+			idx.Scope = traceql.AttributeScope(e.Value.Int64())
 		case entryValueKey:
 			idx.Value = string(e.Value.ByteArray())
 		}
@@ -392,7 +411,7 @@ func createIndexIterator(makeIter makeIterFn, key, value string) pq.Iterator {
 	inner := []pq.Iterator{
 		makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
 		makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
-		makeIter(indexColScopeMask, nil, indexColScopeMask),
+		makeIter(indexColScop, nil, indexColScop),
 		createRowNumberIterator(makeIter),
 	}
 
