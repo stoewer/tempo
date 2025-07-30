@@ -20,103 +20,108 @@ import (
 )
 
 func BenchmarkIndexIterators(b *testing.B) {
+	testCases := []struct {
+		scope string
+		key   string
+		value string
+	}{
+		{"span", "instance.slug", "jehatuheronimus"},            // 129 matches
+		{"span", "aws_region", "us_east_1"},                     // 1820 matches
+		{"resource", "service.branch", "main"},                  // 1291 matches
+		{"resource", "k8s.cluster.name", "prod-au-southeast-0"}, // 3748 matches
+	}
+
 	ctx := context.TODO()
 	opts := common.DefaultSearchOptions()
 
 	block := blockForBenchmarks(b)
 
-	pf, r := openIndexForSearch(b, block, opts)
+	for _, tc := range testCases {
+		b.Run(fmt.Sprintf("%s.%s=%s", tc.scope, tc.key, tc.value), func(b *testing.B) {
+			var res *IndexResult
+			var err error
 
-	rgs := pf.RowGroups()
-	rgs = rgs[:]
+			pf, r := openIndexForSearch(b, block, opts)
 
-	var predicates []*pq.InstrumentedPredicate
-	makeIterInternal := makeIterFunc(ctx, rgs, pf, pq.SyncIteratorOptUseSeekTo(true))
-	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
-		pred := &pq.InstrumentedPredicate{
-			Pred: predicate,
-		}
-		predicates = append(predicates, pred)
-		return makeIterInternal(columnName, pred, selectAs)
+			makeIterInternal := makeIterFunc(ctx, pf.RowGroups(), pf, pq.SyncIteratorOptUseSeekTo(true))
+			makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
+				pred := &pq.InstrumentedPredicate{
+					Pred: predicate,
+				}
+				return makeIterInternal(columnName, pred, selectAs)
+			}
+
+			// reset counter
+			r.BytesRead = 0
+			r.ReadCount = 0
+			rowNumberCount := 0
+			results := 0
+
+			for b.Loop() {
+				iter := NewIndexIterator(makeIter, 0, tc.scope, tc.key, tc.value)
+
+				res, err = iter.Next()
+				if err != nil {
+					panic(err)
+				}
+
+				if res != nil {
+					results++
+					rowNumberCount += len(res.RowNumbers)
+				}
+
+				iter.Close()
+			}
+
+			b.ReportMetric(float64(r.BytesRead)/float64(b.N)/1000/1000, "MB_io/op")
+			b.ReportMetric(float64(r.ReadCount)/float64(b.N), "reads/op")
+			b.ReportMetric(float64(rowNumberCount)/float64(b.N), "index_rn")
+
+			b.ReportMetric(float64(results)/float64(b.N), "results/op")
+			//if len(predicates) > 0 {
+			//	pred := predicates[0]
+			//	b.ReportMetric(float64(pred.InspectedValues), "vals")
+			//	b.ReportMetric(float64(pred.KeptValues), "vals_kept")
+			//}
+
+			//if res == nil {
+			//	return
+			//}
+			//fname := fmt.Sprintf("row-numbers.%s.%s.txt", tc.scope, tc.key)
+			//f, err := os.OpenFile(fname, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+			//if err != nil {
+			//	panic(err)
+			//}
+			//defer f.Close()
+			//
+			//err = writeRowNumbers(f, res.RowNumbers)
+			//if err != nil {
+			//	panic(err)
+			//}
+		})
 	}
-
-	var res *IndexResult
-	var err error
-
-	// reset counter
-	b.ResetTimer()
-	r.BytesRead = 0
-	r.ReadCount = 0
-	rowNumberCount := 0
-	results := 0
-
-	for range b.N {
-		iter := NewIndexIterator(makeIter, 0, "span", "aws_region", "us_east_1")
-
-		res, err = iter.Next()
-		if err != nil {
-			panic(err)
-		}
-
-		if res != nil {
-			results++
-			rowNumberCount += len(res.RowNumbers)
-		}
-
-		iter.Close()
-	}
-
-	b.ReportMetric(float64(r.BytesRead)/float64(b.N)/1000/1000, "MB_io/op")
-	b.ReportMetric(float64(r.ReadCount)/float64(b.N), "reads/op")
-	b.ReportMetric(float64(rowNumberCount)/float64(b.N), "index_rn")
-
-	b.ReportMetric(float64(results)/float64(b.N), "results/op")
-	if len(predicates) > 0 {
-		pred := predicates[0]
-		b.ReportMetric(float64(pred.InspectedValues), "vals")
-		b.ReportMetric(float64(pred.KeptValues), "vals_kept")
-	}
-
-	//if res == nil {
-	//	return
-	//}
-	//
-	//f, err := os.OpenFile("row-numbers.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//defer f.Close()
-	//
-	//err = writeRowNumbers(f, res.RowNumbers)
-	//if err != nil {
-	//	panic(err)
-	//}
 }
 
 func BenchmarkBackendBlockQueryRangeIndex(b *testing.B) {
 	// benchmark config
 	indexLookup := true
-	attrScope := "span"
-	attrKey := "aws_region"
-	attrValue := "us_east_1"
+	testCases := []struct {
+		scope string
+		key   string
+		value string
+	}{
+		{"span", "instance.slug", "jehatuheronimus"},            // 129 matches
+		{"span", "aws_region", "us_east_1"},                     // 1820 matches
+		{"resource", "service.branch", "main"},                  // 1291 matches
+		{"resource", "k8s.cluster.name", "prod-au-southeast-0"}, // 3748 matches
+	}
 
 	ctx := context.TODO()
 	opts := common.DefaultSearchOptions()
 
 	block := blockForBenchmarks(b)
-	pf, r := openIndexForSearch(b, block, opts)
 	_, _, err := block.openForSearch(ctx, opts)
 	require.NoError(b, err)
-
-	var predicates []*pq.InstrumentedPredicate
-	makeIterInternal := makeIterFunc(ctx, pf.RowGroups(), pf, pq.SyncIteratorOptUseSeekTo(true))
-	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
-		pred := &pq.InstrumentedPredicate{
-			Pred: predicate,
-		}
-		predicates = append(predicates, pred)
-		return makeIterInternal(columnName, pred, selectAs)
-	}
 
 	engine := traceql.NewEngine()
 	fetcher := traceql.NewSpansetFetcherWrapper(func(ctx context.Context, req traceql.FetchSpansRequest) (traceql.FetchSpansResponse, error) {
@@ -128,73 +133,93 @@ func BenchmarkBackendBlockQueryRangeIndex(b *testing.B) {
 	start := block.meta.StartTime
 	end := start.Add(time.Duration(minutes) * time.Minute)
 
-	req := &tempopb.QueryRangeRequest{
-		Query:     fmt.Sprintf(`{ %s.%s = "%s" } | rate()`, attrScope, attrKey, attrValue),
-		Step:      uint64(time.Minute),
-		Start:     uint64(start.UnixNano()),
-		End:       uint64(end.UnixNano()),
-		MaxSeries: 1000,
-	}
-
-	eval, err := engine.CompileMetricsQueryRange(req, 2, 0, false)
-	require.NoError(b, err)
-
-	// reset counter
-	block.count = 0
-	r.ReadCount = 0
-	r.BytesRead = 0
-	rnCount := 0
-	b.ResetTimer()
-
-	for range b.N {
-		// Index lookup
-		var res *IndexResult
-		if indexLookup {
-			iter := NewIndexIterator(makeIter, 0, attrScope, attrKey, attrValue)
-
-			res, err = iter.Next()
-			if err != nil {
-				b.Fatal(err)
+	for _, tc := range testCases {
+		b.Run(fmt.Sprintf("%s.%s=%s", tc.scope, tc.key, tc.value), func(b *testing.B) {
+			pf, r := openIndexForSearch(b, block, opts)
+			makeIterInternal := makeIterFunc(ctx, pf.RowGroups(), pf, pq.SyncIteratorOptUseSeekTo(true))
+			makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
+				pred := &pq.InstrumentedPredicate{
+					Pred: predicate,
+				}
+				return makeIterInternal(columnName, pred, selectAs)
 			}
 
-			iter.Close()
-		}
+			// reset counter
+			r.BytesRead = 0
+			r.ReadCount = 0
+			block.count = 0
+			rnCount := 0
 
-		// Inject row numbers if present
-		if res != nil {
-			rnCount = len(res.RowNumbers)
-			block.rowNumbers = &rowNumberIterator{
-				rowNumbers: res.RowNumbers,
-				entry: &struct {
-					Key   string
-					Value parquet.Value
-				}{Key: attrKey, Value: parquet.ValueOf(attrValue)},
+			req := &tempopb.QueryRangeRequest{
+				Query:     fmt.Sprintf(`{ %s.%s = "%s" } | rate()`, tc.scope, tc.key, tc.value),
+				Step:      uint64(time.Minute),
+				Start:     uint64(start.UnixNano()),
+				End:       uint64(end.UnixNano()),
+				MaxSeries: 1000,
 			}
-		}
 
-		// TraceQL metrics query
-		err = eval.Do(ctx, fetcher, uint64(block.meta.StartTime.UnixNano()), uint64(block.meta.EndTime.UnixNano()), int(req.MaxSeries))
-		require.NoError(b, err)
+			eval, err := engine.CompileMetricsQueryRange(req, 2, 0, false)
+			require.NoError(b, err)
+
+			for b.Loop() {
+				// Index lookup
+				var res *IndexResult
+				if indexLookup {
+					iter := NewIndexIterator(makeIter, 0, tc.scope, tc.key, tc.value)
+
+					res, err = iter.Next()
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					iter.Close()
+				}
+
+				// Inject row numbers if present
+				if res != nil {
+					rnCount += len(res.RowNumbers)
+					block.rowNumbers = &rowNumberIterator{
+						rowNumbers: res.RowNumbers,
+						scope:      tc.scope,
+						entry: &struct {
+							Key   string
+							Value parquet.Value
+						}{Key: tc.key, Value: parquet.ValueOf(tc.value)},
+					}
+				}
+
+				// TraceQL metrics query
+				err = eval.Do(ctx, fetcher, uint64(block.meta.StartTime.UnixNano()), uint64(block.meta.EndTime.UnixNano()), int(req.MaxSeries))
+				require.NoError(b, err)
+			}
+
+			// Report metrics
+			bytesRead, spansTotal, _ := eval.Metrics()
+			totalByes := int(bytesRead) + r.BytesRead
+			// b.SetBytes(int64(totalByes / b.N))
+			b.ReportMetric(float64(totalByes)/float64(b.N)/1000/1000, "MB_io/op")
+			totalCount := block.count + r.ReadCount
+			b.ReportMetric(float64(totalCount)/float64(b.N), "reads/op")
+			b.ReportMetric(float64(spansTotal)/float64(b.N), "spans/op")
+			b.ReportMetric(float64(spansTotal)/b.Elapsed().Seconds(), "spans/s")
+			b.ReportMetric(float64(rnCount)/float64(b.N), "index_rn")
+		})
 	}
-
-	// Report metrics
-	bytesRead, spansTotal, _ := eval.Metrics()
-	totalByes := int(bytesRead) + r.BytesRead
-	// b.SetBytes(int64(totalByes / b.N))
-	b.ReportMetric(float64(totalByes)/float64(b.N)/1000/1000, "MB_io/op")
-	totalCount := block.count + r.ReadCount
-	b.ReportMetric(float64(totalCount)/float64(b.N), "reads/op")
-	b.ReportMetric(float64(spansTotal)/float64(b.N), "spans/op")
-	b.ReportMetric(float64(spansTotal)/b.Elapsed().Seconds(), "spans/s")
-	b.ReportMetric(float64(rnCount)/float64(b.N), "index_rn")
 }
 
 func BenchmarkBackendBlockTraceQLIndex(b *testing.B) {
 	// benchmark config
 	indexLookup := true
-	attrScope := "span"
-	attrKey := "aws_region"
-	attrValue := "us_east_1"
+	testCases := []struct {
+		scope string
+		key   string
+		value string
+	}{
+		{"span", "instance.slug", "jehatuheronimus"},            // 129 matches
+		{"span", "aws_region", "us_east_1"},                     // 1820 matches
+		{"resource", "service.branch", "main"},                  // 1291 matches
+		{"resource", "k8s.cluster.name", "prod-au-southeast-0"}, // 3748 matches
+	}
 
 	ctx := context.TODO()
 	opts := common.DefaultSearchOptions()
@@ -202,85 +227,88 @@ func BenchmarkBackendBlockTraceQLIndex(b *testing.B) {
 	//opts.TotalPages = 5
 
 	block := blockForBenchmarks(b)
-	pf, r := openIndexForSearch(b, block, opts)
 	_, _, err := block.openForSearch(ctx, opts)
 	require.NoError(b, err)
 
-	var predicates []*pq.InstrumentedPredicate
-	makeIterInternal := makeIterFunc(ctx, pf.RowGroups(), pf, pq.SyncIteratorOptUseSeekTo(true))
-	makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
-		pred := &pq.InstrumentedPredicate{
-			Pred: predicate,
-		}
-		predicates = append(predicates, pred)
-		return makeIterInternal(columnName, pred, selectAs)
+	for _, tc := range testCases {
+		b.Run(fmt.Sprintf("%s.%s=%s", tc.scope, tc.key, tc.value), func(b *testing.B) {
+			pf, r := openIndexForSearch(b, block, opts)
+			makeIterInternal := makeIterFunc(ctx, pf.RowGroups(), pf, pq.SyncIteratorOptUseSeekTo(true))
+			makeIter := func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator {
+				pred := &pq.InstrumentedPredicate{
+					Pred: predicate,
+				}
+				return makeIterInternal(columnName, pred, selectAs)
+			}
+
+			// counter and metrics
+			r.BytesRead = 0
+			r.ReadCount = 0
+			block.count = 0
+			rnCount := 0
+			bytesRead := 0
+			spansMatched := 0
+			tracesMatched := 0
+
+			// TraceQL query
+			query := fmt.Sprintf("{ %s.%s=`%s` }", tc.scope, tc.key, tc.value)
+
+			for b.Loop() {
+				// Index lookup
+				var res *IndexResult
+				if indexLookup {
+					iter := NewIndexIterator(makeIter, 0, tc.scope, tc.key, tc.value)
+
+					res, err = iter.Next()
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					iter.Close()
+				}
+
+				// Inject row numbers if present
+				if res != nil {
+					rnCount += len(res.RowNumbers)
+					block.rowNumbers = &rowNumberIterator{
+						rowNumbers: res.RowNumbers,
+						scope:      tc.scope,
+						entry: &struct {
+							Key   string
+							Value parquet.Value
+						}{Key: tc.key, Value: parquet.ValueOf(tc.value)},
+					}
+				}
+
+				// TraceQL search query
+				e := traceql.NewEngine()
+				resp, err := e.ExecuteSearch(ctx, &tempopb.SearchRequest{Query: query}, traceql.NewSpansetFetcherWrapper(func(ctx context.Context, req traceql.FetchSpansRequest) (traceql.FetchSpansResponse, error) {
+					return block.Fetch(ctx, req, opts)
+				}))
+				require.NoError(b, err)
+				require.NotNil(b, resp)
+
+				// Collect metrics
+				bytesRead += int(resp.Metrics.InspectedBytes)
+				for _, t := range resp.Traces {
+					tracesMatched++
+					for _, s := range t.SpanSets {
+						spansMatched += int(s.Matched)
+					}
+				}
+			}
+
+			// Report metrics
+			totalBytes := bytesRead + r.BytesRead
+			// b.SetBytes(int64(totalBytes / b.N))
+			b.ReportMetric(float64(totalBytes)/float64(b.N)/1000.0/1000.0, "MB_io/op")
+			totalCount := block.count + r.ReadCount
+			b.ReportMetric(float64(totalCount)/float64(b.N), "reads/op")
+			b.ReportMetric(float64(spansMatched)/float64(b.N), "spans/op")
+			b.ReportMetric(float64(tracesMatched)/float64(b.N), "traces/op")
+			b.ReportMetric(float64(rnCount/b.N), "index_rn")
+		})
 	}
-
-	// TraceQL query
-	query := fmt.Sprintf("{ %s.%s=`%s` }", attrScope, attrKey, attrValue)
-
-	// counter and metrics
-	block.count = 0
-	r.ReadCount = 0
-	rnCount := 0
-	bytesRead := 0
-	spansMatched := 0
-	tracesMatched := 0
-	b.ResetTimer()
-
-	for range b.N {
-		// Index lookup
-		var res *IndexResult
-		if indexLookup {
-			iter := NewIndexIterator(makeIter, 0, attrScope, attrKey, attrValue)
-
-			res, err = iter.Next()
-			if err != nil {
-				b.Fatal(err)
-			}
-
-			iter.Close()
-		}
-
-		// Inject row numbers if present
-		if res != nil {
-			rnCount += len(res.RowNumbers)
-			block.rowNumbers = &rowNumberIterator{
-				rowNumbers: res.RowNumbers,
-				entry: &struct {
-					Key   string
-					Value parquet.Value
-				}{Key: attrKey, Value: parquet.ValueOf(attrValue)},
-			}
-		}
-
-		// TraceQL search query
-		e := traceql.NewEngine()
-		resp, err := e.ExecuteSearch(ctx, &tempopb.SearchRequest{Query: query}, traceql.NewSpansetFetcherWrapper(func(ctx context.Context, req traceql.FetchSpansRequest) (traceql.FetchSpansResponse, error) {
-			return block.Fetch(ctx, req, opts)
-		}))
-		require.NoError(b, err)
-		require.NotNil(b, resp)
-
-		// Collect metrics
-		bytesRead += int(resp.Metrics.InspectedBytes)
-		for _, t := range resp.Traces {
-			tracesMatched++
-			for _, s := range t.SpanSets {
-				spansMatched += int(s.Matched)
-			}
-		}
-	}
-
-	// Report metrics
-	totalBytes := bytesRead + r.BytesRead
-	// b.SetBytes(int64(totalBytes / b.N))
-	b.ReportMetric(float64(totalBytes)/float64(b.N)/1000.0/1000.0, "MB_io/op")
-	totalCount := block.count + r.ReadCount
-	b.ReportMetric(float64(totalCount)/float64(b.N), "reads/op")
-	b.ReportMetric(float64(spansMatched)/float64(b.N), "spans/op")
-	b.ReportMetric(float64(tracesMatched)/float64(b.N), "traces/op")
-	b.ReportMetric(float64(rnCount/b.N), "index_rn")
 }
 
 func TestReadWriteRowNumbers(t *testing.T) {

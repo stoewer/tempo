@@ -374,10 +374,12 @@ func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File,
 
 type rowNumberIterator struct {
 	rowNumbers []pq.RowNumber
+	scope      string
 	entry      *struct {
 		Key   string
 		Value parquet.Value
 	}
+	at pq.IteratorResult
 }
 
 var _ pq.Iterator = (*rowNumberIterator)(nil)
@@ -391,12 +393,13 @@ func (r *rowNumberIterator) Next() (*pq.IteratorResult, error) {
 		return nil, nil
 	}
 
-	res := &pq.IteratorResult{RowNumber: r.rowNumbers[0]}
-	if r.entry.Key != "" {
-		res.Entries = append(res.Entries, *r.entry)
+	r.at.RowNumber = r.rowNumbers[0]
+	if r.entry != nil {
+		r.at.Entries = r.at.Entries[:0]
+		r.at.Entries = append(r.at.Entries, *r.entry)
 	}
 	r.rowNumbers = r.rowNumbers[1:]
-	return res, nil
+	return &r.at, nil
 }
 
 func (r *rowNumberIterator) SeekTo(to pq.RowNumber, definitionLevel int) (*pq.IteratorResult, error) {
