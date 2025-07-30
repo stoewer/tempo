@@ -65,7 +65,7 @@ func NewIndexIterator(makeIter makeIterFn, maxRowNums int, scope, key, value str
 	scopeInt := int64(traceql.AttributeScopeFromString(scope))
 	return &IndexIterator{
 		keyIter:   makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
-		valIter:   makeIter(indexColVal, pq.NewStringEqualPredicate([]byte(value)), entryValueKey),
+		valIter:   makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
 		scopeIter: makeIter(indexColScop, pq.NewIntEqualPredicate(scopeInt), entryScopeKey),
 		rowNumberIter: []pq.Iterator{
 			makeIter(indexColStringValRowNumbersLvl1, nil, entryRowNumberKey),
@@ -186,7 +186,7 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 		var row pq.RowNumber
 
 		for i, ri := range ii.rowNumberIter {
-			res, err = ri.SeekTo(ii.pos, 3)
+			res, err = ri.Next()
 			if err != nil {
 				return nil, err
 			}

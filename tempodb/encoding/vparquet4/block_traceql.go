@@ -1560,7 +1560,7 @@ func fetch(ctx context.Context, req traceql.FetchSpansRequest, pf *parquet.File,
 	if req.SecondPass != nil {
 		iter = newBridgeIterator(newRebatchIterator(iter), req.SecondPass)
 
-		iter, err = createAllIterator(ctx, iter, req.SecondPassConditions, false, 0, 0, rowGroups, pf, dc, req.SecondPassSelectAll, rn)
+		iter, err = createAllIterator(ctx, iter, req.SecondPassConditions, false, 0, 0, rowGroups, pf, dc, req.SecondPassSelectAll, nil)
 		if err != nil {
 			return nil, fmt.Errorf("error creating second pass iterator: %w", err)
 		}
@@ -1873,12 +1873,9 @@ func createSpanIterator(makeIter makeIterFn, innerIterators []parquetquery.Itera
 		}
 	}
 
-	if rn != nil {
-		iters = append(iters, rn)
-	}
-
 	for _, cond := range conditions {
-		if rn != nil && cond.Attribute.Name == rn.entry.Key {
+		if rn != nil && rn.scope == "span" && cond.Attribute.Name == rn.entry.Key {
+			iters = append([]parquetquery.Iterator{rn}, iters...)
 			continue
 		}
 
@@ -2237,15 +2234,12 @@ func createResourceIterator(makeIter makeIterFn, instrumentationIterator parquet
 		columnPredicates[columnPath] = append(columnPredicates[columnPath], p)
 	}
 
-	//if rn != nil {
-	//	iters = append(iters, rn)
-	//}
-
 	for _, cond := range conditions {
 
-		//if rn != nil && cond.Attribute.Name == rn.entry.Key {
-		//	continue
-		//}
+		if rn != nil && rn.scope == "resource" && cond.Attribute.Name == rn.entry.Key {
+			iters = append([]parquetquery.Iterator{rn}, iters...)
+			continue
+		}
 
 		// Well-known selector?
 		if entry, ok := wellKnownColumnLookups[cond.Attribute.Name]; ok && entry.level != traceql.AttributeScopeSpan {
