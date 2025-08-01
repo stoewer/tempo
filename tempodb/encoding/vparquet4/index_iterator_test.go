@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,6 +19,14 @@ import (
 	"github.com/grafana/tempo/pkg/traceql"
 	"github.com/grafana/tempo/tempodb/encoding/common"
 )
+
+var (
+	rnd *rand.Rand
+)
+
+func init() {
+	rnd = rand.New(rand.NewChaCha8([32]byte{1, 2, 3, 4, 5, 6, 7, 8}))
+}
 
 func BenchmarkIndexIterators(b *testing.B) {
 	testCases := []struct {
@@ -334,6 +343,247 @@ func TestReadWriteRowNumbers(t *testing.T) {
 			require.Equal(t, row[j], readRows[i][j])
 		}
 	}
+}
+
+func TestRowNumbersEncodeDecode(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    []pq.RowNumber
+		expected []pq.RowNumber
+	}{
+		{
+			name:     "empty slice",
+			input:    []pq.RowNumber{},
+			expected: []pq.RowNumber{},
+		},
+		{
+			name: "single row number",
+			input: []pq.RowNumber{
+				{1, 2, 3, 4, 5, 6, 7, 8},
+			},
+			expected: []pq.RowNumber{
+				{1, 2, 3, 4, -1, -1, -1, -1},
+			},
+		},
+		{
+			name: "multiple row numbers",
+			input: []pq.RowNumber{
+				{1, 2, 3, 4, 5, 6, 7, 8},
+				{10, 20, 30, 40, 50, 60, 70, 80},
+				{100, 200, 300, 400, 500, 600, 700, 800},
+			},
+			expected: []pq.RowNumber{
+				{1, 2, 3, 4, -1, -1, -1, -1},
+				{10, 20, 30, 40, -1, -1, -1, -1},
+				{100, 200, 300, 400, -1, -1, -1, -1},
+			},
+		},
+		{
+			name: "row numbers with negative values",
+			input: []pq.RowNumber{
+				{1, 2, -1, -2, 5, 6, 7, 8},
+				{10, -1, -10, -11, 50, 60, 70, 80},
+			},
+			expected: []pq.RowNumber{
+				{1, 2, -1, -2, -1, -1, -1, -1},
+				{10, -1, -10, -11, -1, -1, -1, -1},
+			},
+		},
+		{
+			name: "row numbers with sequential values",
+			input: []pq.RowNumber{
+				{0, 0, 0, 0, 0, 0, 0, 0},
+				{1, 1, 1, 1, 1, 1, 1, 1},
+				{2, 2, 2, 2, 2, 2, 2, 2},
+				{3, 3, 3, 3, 3, 3, 3, 3},
+			},
+			expected: []pq.RowNumber{
+				{0, 0, 0, 0, -1, -1, -1, -1},
+				{1, 1, 1, 1, -1, -1, -1, -1},
+				{2, 2, 2, 2, -1, -1, -1, -1},
+				{3, 3, 3, 3, -1, -1, -1, -1},
+			},
+		},
+		{
+			name: "row numbers with large deltas",
+			input: []pq.RowNumber{
+				{0, 0, 0, 0, 0, 0, 0, 0},
+				{1001, 1002, 1003, 1004, 0, 0, 0, 0},
+				{2001, 2002, 2003, 2004, 0, 0, 0, 0},
+				{3001, 3002, 3003, 3004, 0, 0, 0, 0},
+				{4001, 4002, 4003, 4004, 0, 0, 0, 0},
+			},
+			expected: []pq.RowNumber{
+				{0, 0, 0, 0, -1, -1, -1, -1},
+				{1001, 1002, 1003, 1004, -1, -1, -1, -1},
+				{2001, 2002, 2003, 2004, -1, -1, -1, -1},
+				{3001, 3002, 3003, 3004, -1, -1, -1, -1},
+				{4001, 4002, 4003, 4004, -1, -1, -1, -1},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Encode the input row numbers using our test-specific function
+			var encoded []byte
+			var err error
+			encoded, err = RowNumbersEncode(encoded, tc.input)
+			require.NoError(t, err)
+
+			// Decode the encoded data using our test-specific function
+			var decoded []pq.RowNumber
+			decoded, err = RowNumbersDecode(decoded, encoded)
+			require.NoError(t, err)
+
+			// Check that the decoded data matches the expected output
+			require.Equal(t, len(tc.expected), len(decoded))
+			for i := range tc.expected {
+				require.Equal(t, tc.expected[i][:4], decoded[i][:4], "Mismatch at row %d", i)
+			}
+		})
+	}
+}
+
+func TestTruncateRestoreZeros(t *testing.T) {
+	testCases := []struct {
+		name  string
+		input []byte
+	}{
+		{
+			name:  "empty slice",
+			input: []byte{},
+		},
+		{
+			name:  "four zeros",
+			input: []byte{0, 0, 0, 0},
+		},
+		{
+			name:  "four non zeros",
+			input: []byte{1, 2, 3, 4},
+		},
+		{
+			name:  "five zeros",
+			input: []byte{0, 0, 0, 0, 0},
+		},
+		{
+			name:  "five mixed",
+			input: []byte{1, 2, 0, 0, 0},
+		},
+		{
+			name:  "five non zeros",
+			input: []byte{1, 2, 3, 4, 5},
+		},
+		{
+			name:  "medium input",
+			input: []byte{9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		},
+		{
+			name:  "medium input one zero",
+			input: []byte{9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+		},
+		{
+			name:  "medium input no zeros",
+			input: []byte{9, 8, 7, 6, 5, 4, 3, 2, 1},
+		},
+		{
+			name:  "large input",
+			input: []byte{11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 0, 0, 0, 0, 0, 0, 0},
+		},
+		{
+			name:  "large input one zero",
+			input: []byte{11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 0},
+		},
+		{
+			name:  "large input no zero",
+			input: []byte{11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			trunc := truncateZeros(tc.input)
+			restore := restoreZeros(trunc)
+			require.Equal(t, tc.input, restore)
+		})
+	}
+}
+
+func BenchmarkRowNumbersEncodeDecode(b *testing.B) {
+	benchCases := []struct {
+		count int
+	}{
+		{count: 10},
+		{count: 1000},
+		{count: 10_000},
+		{count: 100_000},
+		{count: 1_000_000},
+	}
+
+	for _, bc := range benchCases {
+		b.Run(fmt.Sprintf("%d", bc.count), func(b *testing.B) {
+			// Generate row numbers for this benchmark case
+			rowNumbers := generateRowNumbers(bc.count)
+
+			// Reset the timer before the actual benchmark loop
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			encoded := make([]byte, 1024)
+			decoded := make([]pq.RowNumber, 265)
+
+			for b.Loop() {
+				var err error
+
+				// Encode using our test-specific function
+				encoded, err = RowNumbersEncode(encoded, rowNumbers)
+				require.NoError(b, err)
+
+				// Decode using our test-specific function
+				decoded, err = RowNumbersDecode(decoded, encoded)
+				require.NoError(b, err)
+
+				require.Equal(b, rowNumbers, decoded)
+				b.ReportMetric(float64((len(rowNumbers)*4*4)/len(encoded)), "comp_rate")
+			}
+		})
+	}
+}
+
+// generateRowNumbers creates a slice of sorted row numbers with relatively low deltas between consecutive numbers
+func generateRowNumbers(count int) []pq.RowNumber {
+	var (
+		maxDeltas        = [4]int32{1000, 5, 5, 5}
+		incProbabilities = [4]float64{0.1, 0.05, 0.05, 1}
+	)
+
+	if count <= 0 {
+		return []pq.RowNumber{}
+	}
+
+	result := make([]pq.RowNumber, count)
+
+	row := pq.RowNumber{10, 0, 0, 0, -1, -1, -1, -1}
+	for i := 0; i < count; i++ {
+		incremented := false
+		for j := 0; j < 4; j++ {
+			if !incremented {
+				if rand.Float64() < incProbabilities[j] {
+					row[j] += rnd.Int32N(maxDeltas[j]) + 1
+					incremented = true
+				}
+			} else {
+				if rand.Float64() < incProbabilities[j] {
+					row[j] = rnd.Int32N(maxDeltas[j]) + 1
+				} else {
+					row[j] = 0
+				}
+			}
+		}
+		result[i] = row
+	}
+
+	return result
 }
 
 func openIndexForSearch(b *testing.B, block *backendBlock, searchOpts common.SearchOptions) (*parquet.File, *benchReaderAt) {

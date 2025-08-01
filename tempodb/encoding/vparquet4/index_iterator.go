@@ -3,6 +3,7 @@ package vparquet4
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -372,6 +373,116 @@ func (p StringEqualPredicate) KeepPage(page parquet.Page) bool {
 func (p StringEqualPredicate) KeepValue(val parquet.Value) bool {
 	vv := val.ByteArray()
 	return bytes.Equal(vv, p.value)
+}
+
+var int32SlicePool = sync.Pool{
+	New: func() interface{} {
+		r := make([]int32, 0, 1024)
+		return r
+	},
+}
+
+func putInt32Slice(s []int32) {
+	s = s[:0]
+	int32SlicePool.Put(s)
+}
+
+func getInt32Slice() []int32 {
+	return int32SlicePool.Get().([]int32)
+}
+
+// RowNumbersEncode encodes the first 4 positions of the row numbers in src into, using dst as a buffer.
+func RowNumbersEncode(dst []byte, src []pq.RowNumber) ([]byte, error) {
+	if len(src) == 0 {
+		return dst[:0], nil
+	}
+
+	tmp := getInt32Slice()
+	for _, rn := range src {
+		tmp = append(tmp, rn[0])
+	}
+	for _, rn := range src {
+		tmp = append(tmp, rn[1])
+	}
+	for _, rn := range src {
+		tmp = append(tmp, rn[2])
+	}
+	for _, rn := range src {
+		tmp = append(tmp, rn[3])
+	}
+	dst, err := parquet.DeltaBinaryPacked.EncodeInt32(dst[:0], tmp)
+	putInt32Slice(tmp)
+	if err != nil {
+		return nil, err
+	}
+
+	return truncateZeros(dst), nil
+}
+
+// truncateZeros removes a tail of zeros at the end of the byte array and writes the original length to the last 4 byts.
+func truncateZeros(data []byte) []byte {
+	if len(data) <= 4 {
+		return data
+	}
+
+	endOfData := 0
+	for i, b := range data {
+		if b != 0 {
+			endOfData = i
+		}
+	}
+
+	var lenEnc [4]byte
+	binary.LittleEndian.PutUint32(lenEnc[:], uint32(len(data)))
+	data = append(data[:endOfData+1], lenEnc[:]...)
+	return data
+}
+
+// RowNumbersDecode decodes the bytes in src into a slice of row numbers (setting only the first 4 positions).
+// It uses dst as a buffer.
+func RowNumbersDecode(dst []pq.RowNumber, src []byte) ([]pq.RowNumber, error) {
+	if len(src) == 0 {
+		return dst[:0], nil
+	}
+	src = restoreZeros(src)
+
+	tmp := getInt32Slice()
+	tmp, err := parquet.DeltaBinaryPacked.DecodeInt32(tmp, src)
+	if err != nil {
+		return nil, err
+	}
+
+	dst = dst[:0]
+	step := len(tmp) / 4
+	for i := 0; i < step; i++ {
+		dst = append(dst, pq.RowNumber{tmp[i], tmp[i+step], tmp[i+step*2], tmp[i+step*3], -1, -1, -1, -1})
+	}
+	putInt32Slice(tmp)
+
+	return dst, nil
+}
+
+// restoreZeros reads the original length from the last four bytes and restores the original length.
+func restoreZeros(data []byte) []byte {
+	if len(data) <= 4 {
+		return data
+	}
+
+	endOfData := len(data) - 4
+	length := int(binary.LittleEndian.Uint32(data[endOfData:]))
+
+	if length < cap(data) {
+		data = data[:length]
+		for i := endOfData; i < length; i++ {
+			data[i] = 0
+		}
+	} else {
+		tmp := make([]byte, length)
+		copy(tmp, data[:endOfData+1])
+		data = tmp
+	}
+
+	return data
 }
 
 var _ io.ReaderAt = &benchReaderAt{}
