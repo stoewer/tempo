@@ -513,6 +513,9 @@ func BenchmarkRowNumbersEncodeDecode(b *testing.B) {
 	benchCases := []struct {
 		count int
 	}{
+		{count: 1},
+		{count: 2},
+		{count: 5},
 		{count: 10},
 		{count: 1000},
 		{count: 10_000},
@@ -544,7 +547,7 @@ func BenchmarkRowNumbersEncodeDecode(b *testing.B) {
 				require.NoError(b, err)
 
 				require.Equal(b, rowNumbers, decoded)
-				b.ReportMetric(float64((len(rowNumbers)*4*4)/len(encoded)), "comp_rate")
+				b.ReportMetric(float64(len(encoded))/float64(len(rowNumbers)*4*4), "compression")
 			}
 		})
 	}

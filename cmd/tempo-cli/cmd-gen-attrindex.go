@@ -326,9 +326,10 @@ func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
 				s.ValuesString = make([]indexedValCombined[string], 0, len(scope.ValuesString))
 
 				for _, v := range scope.ValuesString {
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
 					s.ValuesString = append(s.ValuesString, indexedValCombined[string]{
 						Value:      v.Value,
-						RowNumbers: v.RowNumbers,
+						RowNumbers: rn,
 					})
 				}
 
@@ -347,9 +348,10 @@ func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
 				s.ValuesInt = make([]indexedValCombined[int64], 0, len(scope.ValuesInt))
 
 				for _, v := range scope.ValuesInt {
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
 					s.ValuesInt = append(s.ValuesInt, indexedValCombined[int64]{
 						Value:      v.Value,
-						RowNumbers: v.RowNumbers,
+						RowNumbers: rn,
 					})
 				}
 
@@ -368,9 +370,10 @@ func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
 				s.ValuesFloat = make([]indexedValCombined[float64], 0, len(scope.ValuesFloat))
 
 				for _, v := range scope.ValuesFloat {
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
 					s.ValuesFloat = append(s.ValuesFloat, indexedValCombined[float64]{
 						Value:      v.Value,
-						RowNumbers: v.RowNumbers,
+						RowNumbers: rn,
 					})
 				}
 
@@ -389,9 +392,10 @@ func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
 				s.ValuesBool = make([]indexedValCombined[bool], 0, len(scope.ValuesBool))
 
 				for _, v := range scope.ValuesBool {
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
 					s.ValuesBool = append(s.ValuesBool, indexedValCombined[bool]{
 						Value:      v.Value,
-						RowNumbers: v.RowNumbers,
+						RowNumbers: rn,
 					})
 				}
 
@@ -446,7 +450,11 @@ func generateRowsIndex(stats *fileStats) []indexedAttrRows {
 				s.ValuesString = make([]indexedValRows[string], 0, len(scope.ValuesString))
 
 				for _, v := range scope.ValuesString {
-					s.ValuesString = append(s.ValuesString, indexedValRows[string](v))
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
+					s.ValuesString = append(s.ValuesString, indexedValRows[string]{
+						Value:      v.Value,
+						RowNumbers: rn,
+					})
 				}
 
 				sort.Slice(s.ValuesString, func(i, j int) bool {
@@ -458,7 +466,11 @@ func generateRowsIndex(stats *fileStats) []indexedAttrRows {
 				s.ValuesInt = make([]indexedValRows[int64], 0, len(scope.ValuesInt))
 
 				for _, v := range scope.ValuesInt {
-					s.ValuesInt = append(s.ValuesInt, indexedValRows[int64](v))
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
+					s.ValuesInt = append(s.ValuesInt, indexedValRows[int64]{
+						Value:      v.Value,
+						RowNumbers: rn,
+					})
 				}
 
 				sort.Slice(s.ValuesInt, func(i, j int) bool {
@@ -470,7 +482,11 @@ func generateRowsIndex(stats *fileStats) []indexedAttrRows {
 				s.ValuesFloat = make([]indexedValRows[float64], 0, len(scope.ValuesFloat))
 
 				for _, v := range scope.ValuesFloat {
-					s.ValuesFloat = append(s.ValuesFloat, indexedValRows[float64](v))
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
+					s.ValuesFloat = append(s.ValuesFloat, indexedValRows[float64]{
+						Value:      v.Value,
+						RowNumbers: rn,
+					})
 				}
 
 				sort.Slice(s.ValuesFloat, func(i, j int) bool {
@@ -482,7 +498,11 @@ func generateRowsIndex(stats *fileStats) []indexedAttrRows {
 				s.ValuesBool = make([]indexedValRows[bool], 0, len(scope.ValuesBool))
 
 				for _, v := range scope.ValuesBool {
-					s.ValuesBool = append(s.ValuesBool, indexedValRows[bool](v))
+					rn, _ := vp4.RowNumbersEncode(make([]byte, 0, len(v.RowNumbers)), v.RowNumbers)
+					s.ValuesBool = append(s.ValuesBool, indexedValRows[bool]{
+						Value:      v.Value,
+						RowNumbers: rn,
+					})
 				}
 
 				sort.Slice(s.ValuesBool, func(i, j int) bool {
@@ -639,9 +659,9 @@ type indexedScopeCombined struct {
 }
 
 type indexedValCombined[T comparable] struct {
-	Value      []T   `parquet:",snappy"`
-	ValueCode  int64 `parquet:",snappy,delta"`
-	RowNumbers []rowNumberCols
+	Value      []T    `parquet:",snappy"`
+	ValueCode  int64  `parquet:",snappy,delta"`
+	RowNumbers []byte `parquet:",snappy"`
 }
 
 type indexedAttrRows struct {
@@ -658,8 +678,8 @@ type indexedScopeRows struct {
 }
 
 type indexedValRows[T comparable] struct {
-	Value      []T `parquet:",snappy"`
-	RowNumbers []rowNumberCols
+	Value      []T    `parquet:",snappy"`
+	RowNumbers []byte `parquet:",snappy"`
 }
 
 type indexedAttrCodes struct {
@@ -679,13 +699,6 @@ type indexScopeCodes struct {
 type indexedValCodes[T comparable] struct {
 	Value     []T   `parquet:",snappy"`
 	ValueCode int64 `parquet:",snappy,delta"`
-}
-
-type rowNumberCols struct {
-	Lvl01 int64 `parquet:",snappy,delta"`
-	Lvl02 int64 `parquet:",snappy,delta"`
-	Lvl03 int64 `parquet:",snappy,delta"`
-	Lvl04 int64 `parquet:",snappy,delta"`
 }
 
 func writeAttributeIndex[T any](in string, index []T, opts []parquet.WriterOption) error {
@@ -745,7 +758,7 @@ type attributeInfoScope struct {
 
 type valueInfo[T comparable] struct {
 	Value      []T
-	RowNumbers []rowNumberCols
+	RowNumbers []pq.RowNumber
 }
 
 func (fs *fileStats) addAttributes(row pq.RowNumber, scope traceql.AttributeScope, attrs []vp4.Attribute) {
@@ -835,11 +848,11 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 		if !ok {
 			info = valueInfo[string]{
 				Value:      s,
-				RowNumbers: make([]rowNumberCols, 0, 1),
+				RowNumbers: make([]pq.RowNumber, 0, 10),
 			}
 		}
 
-		info.RowNumbers = append(info.RowNumbers, toRowNumberCols(row))
+		info.RowNumbers = append(info.RowNumbers, row)
 		scopeInfo.ValuesString[sum] = info
 	case int64, *int64, []int64:
 		s := toSlice[int64](value)
@@ -855,10 +868,10 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 		if !ok {
 			v = valueInfo[int64]{
 				Value:      s,
-				RowNumbers: make([]rowNumberCols, 0, 1),
+				RowNumbers: make([]pq.RowNumber, 0, 1),
 			}
 		}
-		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
+		v.RowNumbers = append(v.RowNumbers, row)
 		scopeInfo.ValuesInt[sum] = v
 	case float64, *float64, []float64:
 		s := toSlice[float64](value)
@@ -874,10 +887,10 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 		if !ok {
 			v = valueInfo[float64]{
 				Value:      s,
-				RowNumbers: make([]rowNumberCols, 0, 1),
+				RowNumbers: make([]pq.RowNumber, 0, 1),
 			}
 		}
-		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
+		v.RowNumbers = append(v.RowNumbers, row)
 		scopeInfo.ValuesFloat[sum] = v
 	case bool, *bool, []bool:
 		s := toSlice[bool](value)
@@ -893,24 +906,15 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 		if !ok {
 			v = valueInfo[bool]{
 				Value:      s,
-				RowNumbers: make([]rowNumberCols, 0, 1),
+				RowNumbers: make([]pq.RowNumber, 0, 1),
 			}
 		}
-		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
+		v.RowNumbers = append(v.RowNumbers, row)
 		scopeInfo.ValuesBool[sum] = v
 	}
 
 	attrInfo.Scopes[scope] = scopeInfo
 	fs.Attributes[key] = attrInfo
-}
-
-func toRowNumberCols(row pq.RowNumber) rowNumberCols {
-	return rowNumberCols{
-		Lvl01: int64(row[0]),
-		Lvl02: int64(row[1]),
-		Lvl03: int64(row[2]),
-		Lvl04: int64(row[3]),
-	}
 }
 
 func toSlice[T any](val any) []T {

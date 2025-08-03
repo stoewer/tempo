@@ -22,6 +22,7 @@ const (
 	indexColKey                     = "Key"
 	indexColScop                    = "Scopes.list.element.Scope"
 	indexColVal                     = "Scopes.list.element.ValuesString.list.element.Value"
+	indexColStringValRowNumbers     = "Scopes.list.element.ValuesString.list.element.RowNumbers"
 	indexColStringValRowNumbersLvl1 = "Scopes.list.element.ValuesString.list.element.RowNumbers.Lvl01"
 	indexColStringValRowNumbersLvl2 = "Scopes.list.element.ValuesString.list.element.RowNumbers.Lvl02"
 	indexColStringValRowNumbersLvl3 = "Scopes.list.element.ValuesString.list.element.RowNumbers.Lvl03"
@@ -65,17 +66,12 @@ type IndexResult struct {
 func NewIndexIterator(makeIter makeIterFn, maxRowNums int, scope, key, value string) *IndexIterator {
 	scopeInt := int64(traceql.AttributeScopeFromString(scope))
 	return &IndexIterator{
-		keyIter:   makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
-		valIter:   makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
-		scopeIter: makeIter(indexColScop, pq.NewIntEqualPredicate(scopeInt), entryScopeKey),
-		rowNumberIter: []pq.Iterator{
-			makeIter(indexColStringValRowNumbersLvl1, nil, entryRowNumberKey),
-			makeIter(indexColStringValRowNumbersLvl2, nil, entryRowNumberKey),
-			makeIter(indexColStringValRowNumbersLvl3, nil, entryRowNumberKey),
-			makeIter(indexColStringValRowNumbersLvl4, nil, entryRowNumberKey),
-		},
-		maxRowNums: maxRowNums,
-		pos:        pq.EmptyRowNumber(),
+		keyIter:       makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
+		valIter:       makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
+		scopeIter:     makeIter(indexColScop, pq.NewIntEqualPredicate(scopeInt), entryScopeKey),
+		rowNumberIter: makeIter(indexColStringValRowNumbers, nil, entryRowNumberKey),
+		maxRowNums:    maxRowNums,
+		pos:           pq.EmptyRowNumber(),
 		last: struct {
 			pos pq.RowNumber
 			row pq.RowNumber
@@ -90,7 +86,7 @@ type IndexIterator struct {
 	keyIter       pq.Iterator
 	valIter       pq.Iterator
 	scopeIter     pq.Iterator
-	rowNumberIter []pq.Iterator
+	rowNumberIter pq.Iterator
 	maxRowNums    int
 
 	// state
@@ -148,68 +144,21 @@ func (ii *IndexIterator) Next() (*IndexResult, error) {
 		}
 	}
 
-	allocRN := ii.maxRowNums
-	if allocRN == 0 {
-		allocRN = 1024
+	ires.RowNumbers = make([]pq.RowNumber, 0, 512)
+	res, err = ii.rowNumberIter.SeekTo(res.RowNumber, 2)
+	if err != nil {
+		return nil, err
 	}
-	ires.RowNumbers = make([]pq.RowNumber, 0, allocRN)
-
-	if ii.maxRowNums == 0 || len(ires.RowNumbers) < ii.maxRowNums {
-		var row pq.RowNumber
-
-		for i, ri := range ii.rowNumberIter {
-			res, err = ri.SeekTo(ii.pos, 2)
-			if err != nil {
-				return nil, err
-			}
-			if res == nil {
-				return &ires, nil
-			}
-			for _, e := range res.Entries {
-				if e.Key == entryRowNumberKey {
-					row[i] = e.Value.Int32()
-					break
-				}
-			}
-		}
-
-		ii.last.pos = res.RowNumber
-		ii.last.row = row
-
-		if pq.CompareRowNumbers(1, ii.pos, ii.last.pos) != 0 {
-			return &ires, nil
-		}
-
-		ires.RowNumbers = append(ires.RowNumbers, ii.last.row)
+	if res == nil {
+		return nil, nil
 	}
-
-	for ii.maxRowNums == 0 || len(ires.RowNumbers) < ii.maxRowNums {
-		var row pq.RowNumber
-
-		for i, ri := range ii.rowNumberIter {
-			res, err = ri.Next()
-			if err != nil {
-				return nil, err
-			}
-			if res == nil {
-				return &ires, nil
-			}
-			for _, e := range res.Entries {
-				if e.Key == entryRowNumberKey {
-					row[i] = e.Value.Int32()
-					break
-				}
-			}
+	ii.pos = res.RowNumber
+	for _, e := range res.Entries {
+		if e.Key == entryRowNumberKey {
+			rnEnc := e.Value.ByteArray()
+			ires.RowNumbers, err = RowNumbersDecode(ires.RowNumbers, rnEnc)
+			break
 		}
-
-		ii.last.pos = res.RowNumber
-		ii.last.row = row
-
-		if pq.CompareRowNumbers(2, ii.pos, ii.last.pos) != 0 {
-			return &ires, nil
-		}
-
-		ires.RowNumbers = append(ires.RowNumbers, ii.last.row)
 	}
 
 	return &ires, nil
@@ -219,9 +168,7 @@ func (ii *IndexIterator) Close() {
 	ii.keyIter.Close()
 	ii.valIter.Close()
 	ii.scopeIter.Close()
-	for _, iter := range ii.rowNumberIter {
-		iter.Close()
-	}
+	ii.rowNumberIter.Close()
 }
 
 var _ pq.GroupPredicate = (*indexCollector)(nil)
