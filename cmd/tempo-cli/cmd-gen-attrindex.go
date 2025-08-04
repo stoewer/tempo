@@ -56,24 +56,27 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 	}
 	stats.printStats()
 
-	numRowGroups := estimateRowGroups(stats)
+	rowsPerRowGroup := estimateRowsPerRowGroup(stats)
+	opts := []parquet.WriterOption{
+		parquet.MaxRowsPerRowGroup(rowsPerRowGroup),
+	}
 
 	if len(cmd.IndexTypes) == 0 || len(cmd.IndexTypes) == 2 {
 		index := generateCombinedIndex(stats)
 
-		fmt.Printf("Generating combined index with %d rows and %d row groups\n", len(index), numRowGroups)
-		err = writeAttributeIndex(cmd.In, index, numRowGroups)
+		fmt.Printf("Generating combined index with %d rows and %d rows per row group\n", len(index), rowsPerRowGroup)
+		err = writeAttributeIndex(cmd.In, index, opts)
 	} else if len(cmd.IndexTypes) == 1 {
 		if cmd.IndexTypes[0] == "rows" {
 			index := generateRowsIndex(stats)
-			fmt.Printf("Generating inverted index with %d rows and %d row groups\n", len(index), numRowGroups)
+			fmt.Printf("Generating inverted index with %d rows and %d rows per row group\n", len(index), rowsPerRowGroup)
 
-			err = writeAttributeIndex(cmd.In, index, numRowGroups)
+			err = writeAttributeIndex(cmd.In, index, opts)
 		} else if cmd.IndexTypes[0] == "codes" {
 			index := generateCodesIndex(stats)
 
-			fmt.Printf("Generating index with key/value codes with %d rows and %d row groups\n", len(index), numRowGroups)
-			err = writeAttributeIndex(cmd.In, index, numRowGroups)
+			fmt.Printf("Generating index with key/value codes with %d rows and %d rows per row group\n", len(index), rowsPerRowGroup)
+			err = writeAttributeIndex(cmd.In, index, opts)
 		}
 	}
 	if err != nil {
@@ -685,7 +688,7 @@ type rowNumberCols struct {
 	Lvl04 int64 `parquet:",snappy,delta"`
 }
 
-func writeAttributeIndex[T any](in string, index []T, numRowGroups int) error {
+func writeAttributeIndex[T any](in string, index []T, opts []parquet.WriterOption) error {
 	stat, err := os.Stat(filepath.Join(in, "data.parquet"))
 	if err != nil {
 		return err
@@ -697,34 +700,15 @@ func writeAttributeIndex[T any](in string, index []T, numRowGroups int) error {
 	}
 	defer out.Close()
 
-	writer := parquet.NewGenericWriter[T](out)
+	writer := parquet.NewGenericWriter[T](out, opts...)
 	defer writer.Close()
 
-	rgSize := (len(index) / numRowGroups) + 1
-
-	writeCount := 0
-	for writeCount < len(index) {
-		// row group length is either rgSize or the remainder of the index
-		rgLen := min(rgSize, len(index)-writeCount)
-
-		rg := index[writeCount : writeCount+rgLen]
-		rgWriteCount := 0
-
-		fmt.Printf("... write row group with %d rows\n", len(rg))
-
-		for rgWriteCount < len(rg) {
-			n, err := writer.Write(rg[rgWriteCount:])
-			if err != nil {
-				return err
-			}
-			rgWriteCount += n
-		}
-
-		err = writer.Flush()
-		if err != nil {
-			return err
-		}
-		writeCount += rgWriteCount
+	n, err := writer.Write(index)
+	if err != nil {
+		return err
+	}
+	if n != len(index) {
+		return fmt.Errorf("expected to write %d rows, got %d", len(index), n)
 	}
 
 	err = writer.Flush()
@@ -1009,12 +993,12 @@ func cmpSliceBool(a, b []bool) int {
 }
 
 const (
-	magicUncompressedPageSize = 4_500_000
-	minRowGroups              = 3
+	magicUncompressedPageSize int64 = 4_500_000
+	minRowGroups              int64 = 3
 )
 
-func estimateRowGroups(stats *fileStats) int {
-	var uncompressedValueSize int
+func estimateRowsPerRowGroup(stats *fileStats) int64 {
+	var uncompressedValueSize int64
 
 	for _, attr := range stats.Attributes {
 		for _, scope := range attr.Scopes {
@@ -1023,7 +1007,7 @@ func estimateRowGroups(stats *fileStats) int {
 					if uncompressedValueSize%100_000 == 0 {
 						uncompressedValueSize++
 					}
-					uncompressedValueSize += len(val)
+					uncompressedValueSize += int64(len(val))
 				}
 			}
 		}
@@ -1031,5 +1015,7 @@ func estimateRowGroups(stats *fileStats) int {
 
 	// estimate 5 pages per RG
 	uncompressedRowGroupSize := magicUncompressedPageSize * 5
-	return max(uncompressedValueSize/uncompressedRowGroupSize, minRowGroups)
+	rgCount := max(uncompressedValueSize/uncompressedRowGroupSize, minRowGroups)
+
+	return (int64(len(stats.Attributes)) / rgCount) + 1
 }
