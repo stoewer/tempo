@@ -59,6 +59,10 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 	rowsPerRowGroup := estimateRowsPerRowGroup(stats)
 	opts := []parquet.WriterOption{
 		parquet.MaxRowsPerRowGroup(rowsPerRowGroup),
+		parquet.SkipPageBounds("Scopes", "list", "element", "ValuesString", "list", "element", "RowNumbers"),
+		parquet.SkipPageBounds("Scopes", "list", "element", "ValuesInt", "list", "element", "RowNumbers"),
+		parquet.SkipPageBounds("Scopes", "list", "element", "ValuesFloat", "list", "element", "RowNumbers"),
+		parquet.SkipPageBounds("Scopes", "list", "element", "ValuesBool", "list", "element", "RowNumbers"),
 	}
 
 	if len(cmd.IndexTypes) == 0 || len(cmd.IndexTypes) == 2 {
