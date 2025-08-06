@@ -63,7 +63,7 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	// no searches currently require bloom filters or the page index. so just add them statically
 	o := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		parquet.SkipPageIndex(true),
+		parquet.SkipPageIndex(false),
 		parquet.FileReadMode(parquet.ReadModeSync),
 		parquet.FileSchema(parquetSchema),
 	}
