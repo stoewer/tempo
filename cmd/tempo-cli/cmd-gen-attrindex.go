@@ -59,26 +59,26 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 	largest := findLargestAttrs(stats, cmd.ExcludeNLargest)
 	stats.printStats(largest)
 
-	rowsPerRowGroup := estimateRowsPerRowGroup(stats)
+	//rowsPerRowGroup := estimateRowsPerRowGroup(stats)
 	opts := []parquet.WriterOption{
-		parquet.MaxRowsPerRowGroup(rowsPerRowGroup),
+		parquet.MaxRowsPerRowGroup(10),
 	}
 
 	if len(cmd.IndexTypes) == 0 || len(cmd.IndexTypes) == 2 {
 		index := generateCombinedIndex(stats)
 
-		fmt.Printf("Generating combined index with %d rows and %d rows per row group\n", len(index), rowsPerRowGroup)
+		fmt.Printf("Generating combined index with %d rows and %d rows per row group\n", len(index), 10)
 		err = writeAttributeIndex(cmd.In, index, opts)
 	} else if len(cmd.IndexTypes) == 1 {
 		if cmd.IndexTypes[0] == "rows" {
 			index := generateRowsIndex(stats, largest)
-			fmt.Printf("Generating inverted index with %d rows and %d rows per row group\n", len(index), rowsPerRowGroup)
+			fmt.Printf("Generating inverted index with %d rows and %d rows per row group\n", len(index), 10)
 
 			err = writeAttributeIndex(cmd.In, index, opts)
 		} else if cmd.IndexTypes[0] == "codes" {
 			index := generateCodesIndex(stats)
 
-			fmt.Printf("Generating index with key/value codes with %d rows and %d rows per row group\n", len(index), rowsPerRowGroup)
+			fmt.Printf("Generating index with key/value codes with %d rows and %d rows per row group\n", len(index), 10)
 			err = writeAttributeIndex(cmd.In, index, opts)
 		}
 	}
