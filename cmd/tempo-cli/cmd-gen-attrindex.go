@@ -319,7 +319,7 @@ func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
 
 		for _, scope := range attr.Scopes {
 			s := indexedScopeCombined{
-				Scope: int64(scope.Scope),
+				Scope: int32(scope.Scope),
 			}
 
 			if len(scope.ValuesString) > 0 {
@@ -439,7 +439,7 @@ func generateRowsIndex(stats *fileStats) []indexedAttrRows {
 
 		for _, scope := range attr.Scopes {
 			s := indexedScopeRows{
-				Scope: int64(scope.Scope),
+				Scope: int32(scope.Scope),
 			}
 
 			if len(scope.ValuesString) > 0 {
@@ -524,7 +524,7 @@ func generateCodesIndex(stats *fileStats) []indexedAttrCodes {
 
 		for _, scope := range attr.Scopes {
 			s := indexScopeCodes{
-				Scope: int64(scope.Scope),
+				Scope: int32(scope.Scope),
 			}
 
 			if len(scope.ValuesString) > 0 {
@@ -631,7 +631,7 @@ type indexedAttrCombined struct {
 }
 
 type indexedScopeCombined struct {
-	Scope        int64                         `parquet:",snappy,delta"`
+	Scope        int32                         `parquet:",snappy,delta"`
 	ValuesString []indexedValCombined[string]  `parquet:",list"`
 	ValuesInt    []indexedValCombined[int64]   `parquet:",list"`
 	ValuesFloat  []indexedValCombined[float64] `parquet:",list"`
@@ -650,7 +650,7 @@ type indexedAttrRows struct {
 }
 
 type indexedScopeRows struct {
-	Scope        int64                     `parquet:",snappy,delta"`
+	Scope        int32                     `parquet:",snappy,delta"`
 	ValuesString []indexedValRows[string]  `parquet:",list"`
 	ValuesInt    []indexedValRows[int64]   `parquet:",list"`
 	ValuesFloat  []indexedValRows[float64] `parquet:",list"`
@@ -669,7 +669,7 @@ type indexedAttrCodes struct {
 }
 
 type indexScopeCodes struct {
-	Scope        int64                      `parquet:",snappy,delta"`
+	Scope        int32                      `parquet:",snappy,delta"`
 	ValuesString []indexedValCodes[string]  `parquet:",list"`
 	ValuesInt    []indexedValCodes[int64]   `parquet:",list"`
 	ValuesFloat  []indexedValCodes[float64] `parquet:",list"`
@@ -682,10 +682,10 @@ type indexedValCodes[T comparable] struct {
 }
 
 type rowNumberCols struct {
-	Lvl01 int64 `parquet:",snappy,delta"`
-	Lvl02 int64 `parquet:",snappy,delta"`
-	Lvl03 int64 `parquet:",snappy,delta"`
-	Lvl04 int64 `parquet:",snappy,delta"`
+	Lvl01 int32 `parquet:",snappy,delta"`
+	Lvl02 int32 `parquet:",snappy,delta"`
+	Lvl03 int32 `parquet:",snappy,delta"`
+	Lvl04 int32 `parquet:",snappy,delta"`
 }
 
 func writeAttributeIndex[T any](in string, index []T, opts []parquet.WriterOption) error {
@@ -906,10 +906,10 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 
 func toRowNumberCols(row pq.RowNumber) rowNumberCols {
 	return rowNumberCols{
-		Lvl01: int64(row[0]),
-		Lvl02: int64(row[1]),
-		Lvl03: int64(row[2]),
-		Lvl04: int64(row[3]),
+		Lvl01: row[0],
+		Lvl02: row[1],
+		Lvl03: row[2],
+		Lvl04: row[3],
 	}
 }
 
