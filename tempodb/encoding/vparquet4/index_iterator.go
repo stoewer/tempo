@@ -63,18 +63,25 @@ type IndexResult struct {
 
 func NewIndexIterator(makeIter makeIterFn, maxRowNums int, scope, key, value string) *IndexIterator {
 	scopeInt := int64(traceql.AttributeScopeFromString(scope))
-	return &IndexIterator{
-		keyIter:   makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
-		valIter:   makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
-		scopeIter: makeIter(indexColScop, pq.NewIntEqualPredicate(scopeInt), entryScopeKey),
-		rowNumberIter: []pq.Iterator{
-			makeIter(indexColStringValRowNumbersLvl1, nil, entryRowNumberKey),
-			makeIter(indexColStringValRowNumbersLvl2, nil, entryRowNumberKey),
+
+	rnIter := []pq.Iterator{
+		makeIter(indexColStringValRowNumbersLvl1, nil, entryRowNumberKey),
+		makeIter(indexColStringValRowNumbersLvl2, nil, entryRowNumberKey),
+	}
+	if scope != "resource" {
+		rnIter = append(rnIter,
 			makeIter(indexColStringValRowNumbersLvl3, nil, entryRowNumberKey),
 			makeIter(indexColStringValRowNumbersLvl4, nil, entryRowNumberKey),
-		},
-		maxRowNums: maxRowNums,
-		pos:        pq.EmptyRowNumber(),
+		)
+	}
+
+	return &IndexIterator{
+		keyIter:       makeIter(indexColKey, NewStringEqualPredicate([]byte(key)), indexColKey),
+		valIter:       makeIter(indexColVal, NewStringEqualPredicate([]byte(value)), entryValueKey),
+		scopeIter:     makeIter(indexColScop, pq.NewIntEqualPredicate(scopeInt), entryScopeKey),
+		rowNumberIter: rnIter,
+		maxRowNums:    maxRowNums,
+		pos:           pq.EmptyRowNumber(),
 		last: struct {
 			pos pq.RowNumber
 			row pq.RowNumber
