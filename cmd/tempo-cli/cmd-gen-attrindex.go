@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -29,11 +30,12 @@ import (
 // This command is highly experimental and meant to facilitate experimentation with different
 // kinds of indexes.
 type attrIndexCmd struct {
-	In            string   `arg:"" help:"The input parquet block to read from."`
-	AddIntrinsics bool     `help:"Add some intrinsic attributes to the index like name, kind, status, etc."`
-	IndexTypes    []string `enum:"rows,codes" help:"The type of index to generate (rows | codes | rows,codes)" default:"rows,codes"`
-	dedicatedRes  []string `kong:"-"`
-	dedicatedSpan []string `kong:"-"`
+	In              string   `arg:"" help:"The input parquet block to read from."`
+	AddIntrinsics   bool     `help:"Add some intrinsic attributes to the index like name, kind, status, etc."`
+	IndexTypes      []string `enum:"rows,codes" help:"The type of index to generate (rows | codes | rows,codes)" default:"rows,codes"`
+	ExcludeNLargest int      `help:"Exclude the largest N attributes from the index." default:"0"`
+	dedicatedRes    []string `kong:"-"`
+	dedicatedSpan   []string `kong:"-"`
 }
 
 func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
@@ -54,7 +56,8 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 	if err != nil {
 		return err
 	}
-	stats.printStats()
+	largest := findLargestAttrs(stats, cmd.ExcludeNLargest)
+	stats.printStats(largest)
 
 	rowsPerRowGroup := estimateRowsPerRowGroup(stats)
 	opts := []parquet.WriterOption{
@@ -68,7 +71,7 @@ func (cmd *attrIndexCmd) Run(_ *globalOptions) error {
 		err = writeAttributeIndex(cmd.In, index, opts)
 	} else if len(cmd.IndexTypes) == 1 {
 		if cmd.IndexTypes[0] == "rows" {
-			index := generateRowsIndex(stats)
+			index := generateRowsIndex(stats, largest)
 			fmt.Printf("Generating inverted index with %d rows and %d rows per row group\n", len(index), rowsPerRowGroup)
 
 			err = writeAttributeIndex(cmd.In, index, opts)
@@ -208,7 +211,7 @@ func (cmd *attrIndexCmd) collectAttributeStatsForTraces(stats *fileStats, traces
 	}
 }
 
-func (fs *fileStats) printStats() {
+func (fs *fileStats) printStats(removed []attrWithSize) {
 	fmt.Println("File stats:")
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.DiscardEmptyColumns)
@@ -237,7 +240,7 @@ func (fs *fileStats) printStats() {
 		return iCount > jCount
 	})
 
-	const maxAttrPrints = 500
+	const maxAttrPrints = 250
 
 	fmt.Printf("\nAttribute stats (%d most frequent):\n", maxAttrPrints)
 	w = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.DiscardEmptyColumns)
@@ -298,6 +301,18 @@ func (fs *fileStats) printStats() {
 		}
 	}
 	_ = w.Flush()
+
+	if len(removed) > 0 {
+		fmt.Printf("\nRemoved attributes: (%d largest attributes)\n", len(removed))
+		w = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.DiscardEmptyColumns)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", "Name", "Scope", "Size")
+		tmpl = "%s\t%s\t%d\n"
+
+		for _, a := range removed {
+			_, _ = fmt.Fprintf(w, tmpl, a.Key, a.Scope.String(), a.Size)
+		}
+		_ = w.Flush()
+	}
 
 	fmt.Printf("\n\n")
 }
@@ -423,7 +438,7 @@ func generateCombinedIndex(stats *fileStats) []indexedAttrCombined {
 	return index
 }
 
-func generateRowsIndex(stats *fileStats) []indexedAttrRows {
+func generateRowsIndex(stats *fileStats, largest []attrWithSize) []indexedAttrRows {
 	var (
 		index   = make([]indexedAttrRows, 0, len(stats.Attributes))
 		keyCode int64
@@ -442,7 +457,13 @@ func generateRowsIndex(stats *fileStats) []indexedAttrRows {
 				Scope: int32(scope.Scope),
 			}
 
-			if len(scope.ValuesString) > 0 {
+			isLargest := attrsWithSizeContains(largest, scope.Scope, attr.Key)
+			if isLargest {
+				s.ValuesString = []indexedValRows[string]{{
+					Value:      []string{"removed"},
+					RowNumbers: []rowNumberCols{},
+				}}
+			} else if len(scope.ValuesString) > 0 {
 				s.ValuesString = make([]indexedValRows[string], 0, len(scope.ValuesString))
 
 				for _, v := range scope.ValuesString {
@@ -737,6 +758,7 @@ type attributeInfo struct {
 type attributeInfoScope struct {
 	Scope        traceql.AttributeScope
 	Count        int
+	Size         int
 	ValuesString map[uint64]valueInfo[string]
 	ValuesInt    map[uint64]valueInfo[int64]
 	ValuesFloat  map[uint64]valueInfo[float64]
@@ -837,6 +859,9 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 				Value:      s,
 				RowNumbers: make([]rowNumberCols, 0, 1),
 			}
+			for _, e := range s {
+				scopeInfo.Size += len(e)
+			}
 		}
 
 		info.RowNumbers = append(info.RowNumbers, toRowNumberCols(row))
@@ -857,6 +882,7 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 				Value:      s,
 				RowNumbers: make([]rowNumberCols, 0, 1),
 			}
+			scopeInfo.Size = len(s) * 8
 		}
 		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
 		scopeInfo.ValuesInt[sum] = v
@@ -876,6 +902,7 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 				Value:      s,
 				RowNumbers: make([]rowNumberCols, 0, 1),
 			}
+			scopeInfo.Size = len(s) * 8
 		}
 		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
 		scopeInfo.ValuesFloat[sum] = v
@@ -895,6 +922,7 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 				Value:      s,
 				RowNumbers: make([]rowNumberCols, 0, 1),
 			}
+			scopeInfo.Size += len(s)
 		}
 		v.RowNumbers = append(v.RowNumbers, toRowNumberCols(row))
 		scopeInfo.ValuesBool[sum] = v
@@ -902,6 +930,53 @@ func (fs *fileStats) addAttribute(row pq.RowNumber, scope traceql.AttributeScope
 
 	attrInfo.Scopes[scope] = scopeInfo
 	fs.Attributes[key] = attrInfo
+}
+
+type attrWithSize struct {
+	Scope traceql.AttributeScope
+	Key   string
+	Size  int
+}
+
+func findLargestAttrs(fs *fileStats, count int) []attrWithSize {
+	largest := make([]attrWithSize, 0, count+1)
+
+	for key, attrInfo := range fs.Attributes {
+		for scope, scopeInfo := range attrInfo.Scopes {
+			isLargest := true
+			if len(largest) >= count {
+				isLargest = slices.ContainsFunc(largest, func(a attrWithSize) bool { return a.Size < scopeInfo.Size })
+			}
+			if !isLargest {
+				continue
+			}
+
+			largest = append(largest, attrWithSize{
+				Scope: scope,
+				Key:   key,
+				Size:  scopeInfo.Size,
+			})
+			slices.SortFunc(largest, func(a, b attrWithSize) int {
+				return cmp.Compare(b.Size, a.Size)
+			})
+
+			if len(largest) > count {
+				largest = largest[:count]
+				break
+			}
+		}
+	}
+
+	return largest
+}
+
+func attrsWithSizeContains(attrs []attrWithSize, scope traceql.AttributeScope, key string) bool {
+	for _, a := range attrs {
+		if a.Scope == scope && a.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 func toRowNumberCols(row pq.RowNumber) rowNumberCols {
