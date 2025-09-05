@@ -386,19 +386,27 @@ func SyncIteratorOptMaxDefinitionLevel(maxDefinitionLevel int) SyncIteratorOpt {
 	}
 }
 
+// SyncIteratorOptUseSeekToRow if enabled, the iterator will use Pages.SeekToRow for seeking.
+func SyncIteratorOptUseSeekToRow(useSeekToRow bool) SyncIteratorOpt {
+	return func(i *SyncIterator) {
+		i.useSeekToRow = useSeekToRow
+	}
+}
+
 // SyncIterator is a synchronous column iterator. It scans through the given row
 // groups and column, and applies the optional predicate to each chunk, page, and value.
 // Results are read by calling Next() until it returns nil.
 type SyncIterator struct {
 	// Config
-	column     int
-	columnName string
-	selectAs   string
-	rgs        []pq.RowGroup
-	rgsMin     []RowNumber
-	rgsMax     []RowNumber // Exclusive, row number of next one past the row group
-	readSize   int
-	filter     Predicate
+	column       int
+	columnName   string
+	selectAs     string
+	rgs          []pq.RowGroup
+	rgsMin       []RowNumber
+	rgsMax       []RowNumber // Exclusive, row number of next one past the row group
+	readSize     int
+	filter       Predicate
+	useSeekToRow bool
 
 	// Status
 	span            trace.Span
@@ -590,22 +598,18 @@ func (c *SyncIterator) seekPages(seekTo RowNumber, definitionLevel int) (done bo
 	}
 
 	if c.currPage == nil {
-		// TODO (mdisibio)   :((((((((
-		//    pages.SeekToRow is more costly than expected.  It doesn't reuse existing i/o
-		// so it can't be called naively every time we swap pages. We need to figure out
-		// a way to determine when it is worth calling here.
-		/*
-			// Seek into the pages. This is relative to the start of the row group
-			if seekTo[0] > 0 {
-				// Determine row delta. We subtract 1 because curr points at the previous row
-				skip := seekTo[0] - c.currRowGroupMin[0] - 1
-				if skip > 0 {
-					if err := c.currPages.SeekToRow(skip); err != nil {
-						return true, err
-					}
-					c.curr.Skip(skip)
+		if c.useSeekToRow {
+			rgOffset := c.currRowGroupMin[0] + 1
+			rowInRG := seekTo[0] - rgOffset
+
+			if rowInRG > 0 {
+				err = c.currChunk.SeekToRow(int64(rowInRG))
+				if err != nil {
+					return true, err
 				}
-			}*/
+				c.curr = TruncateRowNumber(0, seekTo).Preceding()
+			}
+		}
 
 		for c.currPage == nil {
 			pg, err := c.currChunk.NextPage()
@@ -647,6 +651,10 @@ func (c *SyncIterator) seekPages(seekTo RowNumber, definitionLevel int) (done bo
 // or allow the iterator to call Next() until it finds the desired row number. it uses the magicThreshold
 // as its balance point. if the number of Next()s to skip is less than the magicThreshold, it will not reslice
 func (c *SyncIterator) seekWithinPage(to RowNumber, definitionLevel int) {
+	if c.useSeekToRow {
+		return
+	}
+
 	rowSkipRelative := int(to[0] - c.curr[0])
 	if rowSkipRelative == 0 {
 		return
