@@ -1046,7 +1046,7 @@ func (b *backendBlock) Fetch(ctx context.Context, req traceql.FetchSpansRequest,
 
 	rgs := rowGroupsFromFile(pf, opts)
 
-	iter, err := fetch(ctx, req, pf, rgs, b.meta.DedicatedColumns)
+	iter, err := fetch(ctx, req, pf, rgs, b.meta.DedicatedColumns, opts.UseSeekToRow)
 	if err != nil {
 		return traceql.FetchSpansResponse{}, fmt.Errorf("creating fetch iter: %w", err)
 	}
@@ -1555,8 +1555,10 @@ func (i *mergeSpansetIterator) Close() {
 //                                                            |
 //                                                            V
 
-func fetch(ctx context.Context, req traceql.FetchSpansRequest, pf *parquet.File, rowGroups []parquet.RowGroup, dc backend.DedicatedColumns) (*spansetIterator, error) {
-	iter, err := createAllIterator(ctx, nil, req.Conditions, req.AllConditions, req.StartTimeUnixNanos, req.EndTimeUnixNanos, rowGroups, pf, dc, false, req.TraceSampler, req.SpanSampler)
+func fetch(ctx context.Context, req traceql.FetchSpansRequest, pf *parquet.File, rowGroups []parquet.RowGroup, dc backend.DedicatedColumns, useSeekToRow bool) (*spansetIterator, error) {
+	makeIter := makeIterFunc(ctx, rowGroups, pf, parquetquery.SyncIteratorOptUseSeekToRow(useSeekToRow))
+
+	iter, err := createAllIterator(makeIter, nil, req.Conditions, req.AllConditions, req.StartTimeUnixNanos, req.EndTimeUnixNanos, dc, false, req.TraceSampler, req.SpanSampler)
 	if err != nil {
 		return nil, fmt.Errorf("error creating iterator: %w", err)
 	}
@@ -1564,7 +1566,7 @@ func fetch(ctx context.Context, req traceql.FetchSpansRequest, pf *parquet.File,
 	if req.SecondPass != nil {
 		iter = newBridgeIterator(newRebatchIterator(iter), req.SecondPass)
 
-		iter, err = createAllIterator(ctx, iter, req.SecondPassConditions, false, 0, 0, rowGroups, pf, dc, req.SecondPassSelectAll, nil, nil)
+		iter, err = createAllIterator(makeIter, iter, req.SecondPassConditions, false, 0, 0, dc, req.SecondPassSelectAll, nil, nil)
 		if err != nil {
 			return nil, fmt.Errorf("error creating second pass iterator: %w", err)
 		}
@@ -1628,8 +1630,7 @@ func categorizeConditions(conditions []traceql.Condition) (*categorizedCondition
 	return &categorizedCond, mingled, nil
 }
 
-func createAllIterator(ctx context.Context, primaryIter parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, start, end uint64, rgs []parquet.RowGroup,
-	pf *parquet.File, dc backend.DedicatedColumns, selectAll bool,
+func createAllIterator(makeIter makeIterFn, primaryIter parquetquery.Iterator, conditions []traceql.Condition, allConditions bool, start, end uint64, dc backend.DedicatedColumns, selectAll bool,
 	traceSampler traceql.Sampler,
 	spanSampler traceql.Sampler,
 ) (parquetquery.Iterator, error) {
@@ -1638,8 +1639,6 @@ func createAllIterator(ctx context.Context, primaryIter parquetquery.Iterator, c
 	if err != nil {
 		return nil, err
 	}
-
-	makeIter := makeIterFunc(ctx, rgs, pf)
 
 	// Global state
 	// Span-filtering behavior changes depending on the resource-filtering in effect,

@@ -63,9 +63,13 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	// no searches currently require bloom filters or the page index. so just add them statically
 	o := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		parquet.SkipPageIndex(true),
 		parquet.FileReadMode(parquet.ReadModeAsync),
 		parquet.FileSchema(parquetSchema),
+	}
+
+	// if we don't use seeking, the page index is not needed
+	if !opts.UseSeekToRow {
+		o = append(o, parquet.SkipPageIndex(true))
 	}
 
 	// if the read buffer size provided is <= 0 then we'll use the parquet default
@@ -349,7 +353,7 @@ func rawToResults(ctx context.Context, pf *parquet.File, rgs []parquet.RowGroup,
 // makeIterFn is a helper to create an iterator, that abstracts away context like file and row groups.
 type makeIterFn func(columnName string, predicate pq.Predicate, selectAs string) pq.Iterator
 
-func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File) makeIterFn {
+func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File, opts ...pq.SyncIteratorOpt) makeIterFn {
 	return func(name string, predicate pq.Predicate, selectAs string) pq.Iterator {
 		index, _, maxDef := pq.GetColumnIndexByPath(pf, name)
 		if index == -1 {
@@ -357,12 +361,14 @@ func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File)
 			panic("column not found in parquet file:" + name)
 		}
 
-		opts := []pq.SyncIteratorOpt{
+		opts = append(
+			opts,
 			pq.SyncIteratorOptColumnName(name),
 			pq.SyncIteratorOptPredicate(predicate),
 			pq.SyncIteratorOptSelectAs(selectAs),
 			pq.SyncIteratorOptMaxDefinitionLevel(maxDef),
-		}
+		)
+
 		if name != columnPathSpanID && name != columnPathTraceID {
 			opts = append(opts, pq.SyncIteratorOptIntern())
 		}

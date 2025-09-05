@@ -662,7 +662,7 @@ func (b *walBlock) SearchTagValuesV2(ctx context.Context, tag traceql.Attribute,
 	return nil
 }
 
-func (b *walBlock) Fetch(ctx context.Context, req traceql.FetchSpansRequest, _ common.SearchOptions) (traceql.FetchSpansResponse, error) {
+func (b *walBlock) Fetch(ctx context.Context, req traceql.FetchSpansRequest, opts common.SearchOptions) (traceql.FetchSpansResponse, error) {
 	ctx, span := tracer.Start(ctx, "walBlock.Fetch")
 	defer span.End()
 
@@ -684,7 +684,7 @@ func (b *walBlock) Fetch(ctx context.Context, req traceql.FetchSpansRequest, _ c
 
 		pf := file.parquetFile
 
-		iter, err := fetch(ctx, req, pf, pf.RowGroups(), b.meta.DedicatedColumns)
+		iter, err := fetch(ctx, req, pf, pf.RowGroups(), b.meta.DedicatedColumns, opts.UseSeekToRow) // TODO: should disable SeekToRow for walBlock?
 		if err != nil {
 			return traceql.FetchSpansResponse{}, fmt.Errorf("creating fetch iter: %w", err)
 		}

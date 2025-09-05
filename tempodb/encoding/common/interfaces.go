@@ -44,6 +44,7 @@ type SearchOptions struct {
 	ReadBufferCount    int
 	ReadBufferSize     int
 	RF1After           time.Time // Only blocks with RF1 are selected after this timestamp. RF3 is selected otherwise.
+	UseSeekToRow       bool
 }
 
 // DefaultSearchOptions is used in a lot of places such as local ingester searches. It is important
