@@ -51,6 +51,19 @@ func (h *ColumnChunkHelper) NextPage() (parquet.Page, error) {
 	return h.pages.ReadPage()
 }
 
+func (h *ColumnChunkHelper) SeekToRow(row int64) error {
+	if h.pages == nil {
+		h.pages = h.ColumnChunk.Pages()
+	}
+
+	if h.firstPage != nil {
+		parquet.Release(h.firstPage)
+		h.firstPage = nil
+	}
+
+	return h.pages.SeekToRow(row)
+}
+
 func (h *ColumnChunkHelper) Close() error {
 	if h.firstPage != nil {
 		parquet.Release(h.firstPage)
