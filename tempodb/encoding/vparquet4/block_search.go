@@ -63,7 +63,7 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	// no searches currently require bloom filters or the page index. so just add them statically
 	o := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		parquet.SkipPageIndex(true),
+		parquet.SkipPageIndex(false),
 		parquet.FileReadMode(parquet.ReadModeAsync),
 		parquet.FileSchema(parquetSchema),
 	}
@@ -362,6 +362,7 @@ func makeIterFunc(ctx context.Context, rgs []parquet.RowGroup, pf *parquet.File)
 			pq.SyncIteratorOptPredicate(predicate),
 			pq.SyncIteratorOptSelectAs(selectAs),
 			pq.SyncIteratorOptMaxDefinitionLevel(maxDef),
+			pq.SyncIteratorOptUseSeekToRow(true),
 		}
 		if name != columnPathSpanID && name != columnPathTraceID {
 			opts = append(opts, pq.SyncIteratorOptIntern())

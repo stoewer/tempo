@@ -234,7 +234,7 @@ func (w *walBlockFlush) file(ctx context.Context) (*pageFile, error) {
 	wr := newWalReaderAt(ctx, file)
 	o := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
-		parquet.SkipPageIndex(true),
+		parquet.SkipPageIndex(false),
 		parquet.FileSchema(parquetSchema),
 	}
 
