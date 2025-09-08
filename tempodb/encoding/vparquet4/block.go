@@ -23,7 +23,8 @@ type backendBlock struct {
 	meta *backend.BlockMeta
 	r    backend.Reader
 
-	openMtx sync.Mutex
+	openMtx   sync.Mutex
+	readCount int64
 }
 
 var _ common.BackendBlock = (*backendBlock)(nil)

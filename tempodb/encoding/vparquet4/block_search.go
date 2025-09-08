@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"time"
@@ -64,7 +65,7 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	o := []parquet.FileOption{
 		parquet.SkipBloomFilters(true),
 		parquet.SkipPageIndex(false),
-		parquet.FileReadMode(parquet.ReadModeAsync),
+		parquet.FileReadMode(parquet.ReadModeSync),
 		parquet.FileSchema(parquetSchema),
 	}
 
@@ -77,11 +78,12 @@ func (b *backendBlock) openForSearch(ctx context.Context, opts common.SearchOpti
 	o = append(o, parquet.ReadBufferSize(readBufferSize))
 
 	// cached reader
-	cachedReaderAt := newCachedReaderAt(backendReaderAt, readBufferSize, int64(b.meta.Size_), b.meta.FooterSize) // most reads to the backend are going to be readbuffersize so use it as our "page cache" size
+	cachedReader := newCachedReaderAt(backendReaderAt, readBufferSize, int64(b.meta.Size_), b.meta.FooterSize) // most reads to the backend are going to be readbuffersize so use it as our "page cache" size
+	benchReader := &benchReaderAt{Delay: time.Millisecond * 50, Reader: cachedReader, CountFn: b.countFn}
 
 	_, span := tracer.Start(ctx, "parquet.OpenFile")
 	defer span.End()
-	pf, err := parquet.OpenFile(cachedReaderAt, int64(b.meta.Size_), o...)
+	pf, err := parquet.OpenFile(benchReader, int64(b.meta.Size_), o...)
 
 	return pf, backendReaderAt, err
 }
@@ -113,6 +115,10 @@ func (b *backendBlock) Search(ctx context.Context, req *tempopb.SearchRequest, o
 	results.Metrics.InspectedTraces += uint32(b.meta.TotalObjects)
 
 	return results, nil
+}
+
+func (b *backendBlock) countFn() {
+	b.readCount++
 }
 
 func makePipelineWithRowGroups(ctx context.Context, req *tempopb.SearchRequest, pf *parquet.File, rgs []parquet.RowGroup, dc backend.DedicatedColumns) pq.Iterator {
@@ -485,4 +491,25 @@ func rowGroupsFromFile(pf *parquet.File, opts common.SearchOptions) []parquet.Ro
 	}
 
 	return rgs
+}
+
+var _ io.ReaderAt = &benchReaderAt{}
+
+type benchReaderAt struct {
+	Reader  io.ReaderAt
+	Delay   time.Duration
+	CountFn func()
+}
+
+func (b *benchReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	if b.Delay > 0 {
+		time.Sleep(b.Delay)
+	}
+
+	n, err = b.Reader.ReadAt(p, off)
+	if b.CountFn != nil {
+		b.CountFn()
+	}
+
+	return n, err
 }
