@@ -47,6 +47,14 @@ func (o *perTenantOverrides) UnmarshalYAML(unmarshal func(interface{}) error) er
 		// we check whether Overrides.Extra contains legacy fields.
 		if !o.containsLegacyFields() {
 			o.ConfigType = ConfigTypeNew
+			for tenantID, limits := range o.TenantLimits {
+				if limits == nil {
+					continue
+				}
+				if err := processExtensions(limits); err != nil {
+					return fmt.Errorf("tenant %q: %w", tenantID, err)
+				}
+			}
 			return nil
 		}
 	}
@@ -56,22 +64,39 @@ func (o *perTenantOverrides) UnmarshalYAML(unmarshal func(interface{}) error) er
 		return err
 	}
 
-	*o = legacyConfig.toNewOverrides()
+	newOverrides, err := legacyConfig.toNewOverrides()
+	if err != nil {
+		return err
+	}
+	*o = newOverrides
 	o.ConfigType = ConfigTypeLegacy
+
+	for tenantID, limits := range o.TenantLimits {
+		if limits == nil {
+			continue
+		}
+		if err := processExtensions(limits); err != nil {
+			return fmt.Errorf("tenant %q: %w", tenantID, err)
+		}
+	}
 
 	return nil
 }
 
 // containsLegacyFields reports whether any tenant's Extra map holds a key that is a known
-// legacy field name, indicating the YAML was in legacy (flat) format.
+// legacy field name or a registered extension flat key, indicating the YAML was in legacy format.
 func (o *perTenantOverrides) containsLegacyFields() bool {
 	legacyFields := knownLegacyOverridesYAMLFields()
+	extFlatKeys := allExtensionFlatKeys()
 	for _, limits := range o.TenantLimits {
 		if limits == nil {
 			continue
 		}
 		for key := range limits.Extra {
 			if _, isLegacy := legacyFields[key]; isLegacy {
+				return true
+			}
+			if _, isExtFlat := extFlatKeys[key]; isExtFlat {
 				return true
 			}
 		}

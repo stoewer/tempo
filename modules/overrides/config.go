@@ -248,7 +248,7 @@ func (o *Overrides) UnmarshalJSON(data []byte) error {
 		}
 		o.Extra[k] = val
 	}
-	return nil
+	return processExtensions(o)
 }
 
 func (o Overrides) MarshalJSON() ([]byte, error) {
@@ -322,7 +322,11 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return fmt.Errorf("failed to unmarshal config: %w; also failed in legacy format: %w", err, legacyErr)
 	}
 
-	c.Defaults = legacyCfg.DefaultOverrides.toNewLimits()
+	var convErr error
+	c.Defaults, convErr = legacyCfg.DefaultOverrides.toNewLimits()
+	if convErr != nil {
+		return fmt.Errorf("failed to convert legacy defaults: %w", convErr)
+	}
 	c.PerTenantOverrideConfig = legacyCfg.PerTenantOverrideConfig
 	c.PerTenantOverridePeriod = legacyCfg.PerTenantOverridePeriod
 	c.UserConfigurableOverridesConfig = legacyCfg.UserConfigurableOverridesConfig

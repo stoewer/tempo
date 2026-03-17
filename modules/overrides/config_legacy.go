@@ -2,6 +2,8 @@ package overrides
 
 import (
 	"encoding/json"
+	"flag"
+	"fmt"
 	"sync"
 	"time"
 
@@ -16,7 +18,7 @@ import (
 )
 
 func (c *Overrides) toLegacy() LegacyOverrides {
-	return LegacyOverrides{
+	result := LegacyOverrides{
 		IngestionRateStrategy:      c.Ingestion.RateStrategy,
 		IngestionRateLimitBytes:    c.Ingestion.RateLimitBytes,
 		IngestionBurstSizeBytes:    c.Ingestion.BurstSizeBytes,
@@ -84,8 +86,23 @@ func (c *Overrides) toLegacy() LegacyOverrides {
 			Dimensions:     c.CostAttribution.Dimensions,
 			MaxCardinality: c.CostAttribution.MaxCardinality,
 		},
-		Extra: c.Extra,
 	}
+	// Convert typed Extension values to flat legacy keys; copy non-Extension entries as-is.
+	if len(c.Extra) > 0 {
+		extra := make(map[string]any, len(c.Extra))
+		for k, v := range c.Extra {
+			if ext, ok := v.(Extension); ok {
+				for fk, fv := range ext.ToLegacy() {
+					extra[fk] = fv
+				}
+				// The nested extension key is replaced by its flat keys.
+			} else {
+				extra[k] = v
+			}
+		}
+		result.Extra = extra
+	}
+	return result
 }
 
 // LegacyOverrides describe all the limits for users; can be used to describe global default
@@ -239,8 +256,8 @@ func (l LegacyOverrides) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func (l *LegacyOverrides) toNewLimits() Overrides {
-	return Overrides{
+func (l *LegacyOverrides) toNewLimits() (Overrides, error) {
+	o := Overrides{
 		Ingestion: IngestionOverrides{
 			RateStrategy:           l.IngestionRateStrategy,
 			RateLimitBytes:         l.IngestionRateLimitBytes,
@@ -324,8 +341,51 @@ func (l *LegacyOverrides) toNewLimits() Overrides {
 			Dimensions:     l.CostAttribution.Dimensions,
 			MaxCardinality: l.CostAttribution.MaxCardinality,
 		},
-		Extra: l.Extra,
 	}
+	// Clone Extra so we can mutate it during legacy conversion.
+	if len(l.Extra) > 0 {
+		o.Extra = make(map[string]any, len(l.Extra))
+		for k, v := range l.Extra {
+			o.Extra[k] = v
+		}
+	}
+	// For each registered extension that has legacy flat keys, collect those keys
+	// from o.Extra, call FromLegacy to build a typed instance, remove the flat keys,
+	// and store the typed instance under the extension's nested key.
+	extensionRegistry.RLock()
+	legacyEntries := make([]*registryEntry, 0, len(extensionRegistry.entries))
+	for _, e := range extensionRegistry.entries {
+		if len(e.legacyKeys) > 0 {
+			legacyEntries = append(legacyEntries, e)
+		}
+	}
+	extensionRegistry.RUnlock()
+
+	for _, entry := range legacyEntries {
+		hasFlatKey := false
+		for _, fk := range entry.legacyKeys {
+			if _, ok := o.Extra[fk]; ok {
+				hasFlatKey = true
+				break
+			}
+		}
+		if !hasFlatKey {
+			continue
+		}
+		instance := entry.newInstance()
+		instance.RegisterFlagsAndApplyDefaults("", flag.NewFlagSet("", flag.ContinueOnError))
+		if err := instance.FromLegacy(o.Extra); err != nil {
+			return Overrides{}, fmt.Errorf("extension %q: from legacy: %w", entry.key, err)
+		}
+		for _, fk := range entry.legacyKeys {
+			delete(o.Extra, fk)
+		}
+		if o.Extra == nil {
+			o.Extra = make(map[string]any)
+		}
+		o.Extra[entry.key] = instance
+	}
+	return o, nil
 }
 
 // perTenantLegacyOverrides represents the Overrides config file with the legacy representation
@@ -334,15 +394,18 @@ type perTenantLegacyOverrides struct {
 }
 
 // Convert to new format
-func (l *perTenantLegacyOverrides) toNewOverrides() perTenantOverrides {
+func (l *perTenantLegacyOverrides) toNewOverrides() (perTenantOverrides, error) {
 	overrides := perTenantOverrides{
 		TenantLimits: make(map[string]*Overrides, len(l.TenantLimits)),
 	}
 
 	for tenantID, legacyLimits := range l.TenantLimits {
-		limits := legacyLimits.toNewLimits()
+		limits, err := legacyLimits.toNewLimits()
+		if err != nil {
+			return perTenantOverrides{}, fmt.Errorf("tenant %q: %w", tenantID, err)
+		}
 		overrides.TenantLimits[tenantID] = &limits
 	}
 
-	return overrides
+	return overrides, nil
 }
