@@ -86,14 +86,14 @@ func TestRegisterExtension_TypedGetter(t *testing.T) {
 
 	fieldB := 99
 	o := Overrides{
-		Extra: map[string]any{"test_extension": &testExtension{FieldA: "hello", FieldB: &fieldB}},
+		Extensions: map[string]any{"test_extension": &testExtension{FieldA: "hello", FieldB: &fieldB}},
 	}
 	ext := get(&o)
 	require.NotNil(t, ext)
 	assert.Equal(t, "hello", ext.FieldA)
 	assert.Equal(t, 99, *ext.FieldB)
 
-	// Nil Overrides and empty Extra both return zero value.
+	// Nil Overrides and empty Extensions both return zero value.
 	assert.Nil(t, get(nil))
 	assert.Nil(t, get(&Overrides{}))
 }
@@ -110,7 +110,7 @@ func TestOverridesExtension_MarshalJSON(t *testing.T) {
 		fieldB := 42
 		o := Overrides{}
 		o.Ingestion.MaxLocalTracesPerUser = 1000
-		o.Extra = map[string]any{
+		o.Extensions = map[string]any{
 			"test_extension": &testExtension{FieldA: "custom", FieldB: &fieldB},
 		}
 
@@ -134,7 +134,7 @@ func TestOverridesExtension_MarshalJSON(t *testing.T) {
 		fieldB := 7
 		o := Overrides{}
 		o.Ingestion.MaxLocalTracesPerUser = 500
-		o.Extra = map[string]any{
+		o.Extensions = map[string]any{
 			"test_extension": &testExtension{FieldA: "flat_val", FieldB: &fieldB},
 		}
 		l := o.toLegacy()
@@ -148,10 +148,10 @@ func TestOverridesExtension_MarshalJSON(t *testing.T) {
 		assert.Equal(t, "flat_val", m["test_extension_field_a"], "flat key must appear in JSON")
 		assert.Nil(t, m["test_extension"], "nested key must not appear in JSON")
 
-		// Unmarshal the JSON back to LegacyOverrides; flat keys land in Extra.
+		// Unmarshal the JSON back to LegacyOverrides; flat keys land in Extensions.
 		var l2 LegacyOverrides
 		require.NoError(t, json.Unmarshal(b, &l2))
-		assert.Equal(t, "flat_val", l2.Extra["test_extension_field_a"])
+		assert.Equal(t, "flat_val", l2.Extensions["test_extension_field_a"])
 	})
 }
 
@@ -218,13 +218,13 @@ func TestOverridesExtension_UnmarshalJSON(t *testing.T) {
 		ResetRegistryForTesting(t)
 		RegisterExtension[*testExtension](&testExtension{})
 
-		// LegacyOverrides JSON may contain flat extension keys; they must land in Extra
+		// LegacyOverrides JSON may contain flat extension keys; they must land in Extensions
 		// without error (processing is deferred to toNewLimits).
 		input := `{"max_traces_per_user": 1000, "test_extension_field_a": "from_legacy_json"}`
 		var l LegacyOverrides
 		require.NoError(t, json.Unmarshal([]byte(input), &l))
 		assert.Equal(t, 1000, l.MaxLocalTracesPerUser)
-		assert.Equal(t, "from_legacy_json", l.Extra["test_extension_field_a"])
+		assert.Equal(t, "from_legacy_json", l.Extensions["test_extension_field_a"])
 	})
 }
 
@@ -240,7 +240,7 @@ func TestOverridesExtension_MarshalYAML(t *testing.T) {
 		fieldB := 3
 		o := Overrides{}
 		o.Ingestion.MaxLocalTracesPerUser = 1000
-		o.Extra = map[string]any{
+		o.Extensions = map[string]any{
 			"test_extension": &testExtension{FieldA: "yaml_val", FieldB: &fieldB},
 		}
 
@@ -269,7 +269,7 @@ func TestOverridesExtension_MarshalYAML(t *testing.T) {
 		fieldB := 8
 		o := Overrides{}
 		o.Ingestion.MaxLocalTracesPerUser = 500
-		o.Extra = map[string]any{
+		o.Extensions = map[string]any{
 			"test_extension": &testExtension{FieldA: "legacy_yaml", FieldB: &fieldB},
 		}
 		l := o.toLegacy()
@@ -302,7 +302,7 @@ test_extension:
 `
 		var o Overrides
 		require.NoError(t, yaml.Unmarshal([]byte(input), &o))
-		// After YAML unmarshal, Extra holds a raw map; processExtensions decodes it.
+		// After YAML unmarshal, Extensions holds a raw map; processExtensions decodes it.
 		require.NoError(t, processExtensions(&o))
 
 		assert.Equal(t, 1000, o.Ingestion.MaxLocalTracesPerUser)
@@ -355,7 +355,7 @@ test_extension_field_a: from_legacy_yaml
 		require.NoError(t, yaml.Unmarshal([]byte(input), &l))
 
 		assert.Equal(t, 1000, l.MaxLocalTracesPerUser)
-		assert.Equal(t, "from_legacy_yaml", l.Extra["test_extension_field_a"])
+		assert.Equal(t, "from_legacy_yaml", l.Extensions["test_extension_field_a"])
 
 		// Convert to new format: flat keys become a typed extension.
 		o, err := l.toNewLimits()
@@ -434,7 +434,7 @@ func TestExtension_JSONRoundTrip_Overrides(t *testing.T) {
 	fieldB := 13
 	o := Overrides{}
 	o.Ingestion.MaxLocalTracesPerUser = 777
-	o.Extra = map[string]any{
+	o.Extensions = map[string]any{
 		"test_extension": &testExtension{FieldA: "json_rt", FieldB: &fieldB},
 	}
 
@@ -458,13 +458,13 @@ func TestExtension_LegacyConversionRoundTrip(t *testing.T) {
 	fieldB := 21
 	// Build an Overrides with a typed extension, convert to legacy and back.
 	o := Overrides{}
-	o.Extra = map[string]any{
+	o.Extensions = map[string]any{
 		"test_extension": &testExtension{FieldA: "converted", FieldB: &fieldB},
 	}
 	l := o.toLegacy()
 
-	assert.Equal(t, "converted", l.Extra["test_extension_field_a"])
-	assert.Nil(t, l.Extra["test_extension"], "nested key must not appear in legacy")
+	assert.Equal(t, "converted", l.Extensions["test_extension_field_a"])
+	assert.Nil(t, l.Extensions["test_extension"], "nested key must not appear in legacy")
 
 	o2, err := l.toNewLimits()
 	require.NoError(t, err)
@@ -475,4 +475,3 @@ func TestExtension_LegacyConversionRoundTrip(t *testing.T) {
 	assert.Equal(t, "converted", ext.FieldA)
 	assert.Equal(t, 21, *ext.FieldB)
 }
-

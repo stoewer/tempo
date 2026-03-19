@@ -213,8 +213,8 @@ type Overrides struct {
 	Storage         StorageOverrides         `yaml:"storage,omitempty" json:"storage,omitempty"`
 	CostAttribution CostAttributionOverrides `yaml:"cost_attribution,omitempty" json:"cost_attribution,omitempty"`
 
-	// Extra captures fields not recognised by this struct. This allows systems vendoring tempo to add their own overrides
-	Extra map[string]any `yaml:",inline" json:"-"`
+	// Extensions captures fields not recognised by this struct. This allows systems vendoring tempo to add their own overrides
+	Extensions map[string]any `yaml:",inline" json:"-"`
 }
 
 // knownOverridesJSONFields returns the JSON key names declared on Overrides
@@ -240,15 +240,32 @@ func (o *Overrides) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	o.Extra = make(map[string]any, len(raw))
+	extensionRegistry.RLock()
+	defer extensionRegistry.RUnlock()
+
+	o.Extensions = make(map[string]any, len(raw))
 	for k, v := range raw {
-		var val any
-		if err := json.Unmarshal(v, &val); err != nil {
-			return err
+		entry, exists := extensionRegistry.entries[k]
+		if !exists {
+			return fmt.Errorf("unknown extension key %q", k)
 		}
-		o.Extra[k] = val
+
+		val := entry.newInstance()
+		val.RegisterFlagsAndApplyDefaults(k, &flag.FlagSet{})
+		err := json.Unmarshal(v, &val)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal extension %q: %w", k, err)
+		}
+
+		err = val.Validate()
+		if err != nil {
+			return fmt.Errorf("failed to validate extension %q: %w", k, err)
+		}
+
+		o.Extensions[k] = val
 	}
-	return processExtensions(o)
+
+	return nil
 }
 
 func (o Overrides) MarshalJSON() ([]byte, error) {
@@ -257,24 +274,35 @@ func (o Overrides) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(o.Extra) == 0 {
+	if len(o.Extensions) == 0 {
 		return data, nil
 	}
 
+	extensionRegistry.RLock()
+	defer extensionRegistry.RUnlock()
+
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(data, &m); err != nil {
+	err = json.Unmarshal(data, &m)
+	if err != nil {
 		return nil, err
 	}
-	for k, v := range o.Extra {
+
+	for k, v := range o.Extensions {
+		if _, exists := extensionRegistry.entries[k]; !exists {
+			return nil, fmt.Errorf("unknown extension key %q", k)
+		}
+
 		if _, exists := m[k]; exists {
 			continue // known fields take precedence
 		}
+
 		b, err := json.Marshal(v)
 		if err != nil {
 			return nil, err
 		}
 		m[k] = b
 	}
+
 	return json.Marshal(m)
 }
 

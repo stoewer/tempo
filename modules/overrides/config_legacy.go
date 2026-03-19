@@ -88,9 +88,9 @@ func (c *Overrides) toLegacy() LegacyOverrides {
 		},
 	}
 	// Convert typed Extension values to flat legacy keys; copy non-Extension entries as-is.
-	if len(c.Extra) > 0 {
-		extra := make(map[string]any, len(c.Extra))
-		for k, v := range c.Extra {
+	if len(c.Extensions) > 0 {
+		extra := make(map[string]any, len(c.Extensions))
+		for k, v := range c.Extensions {
 			if ext, ok := v.(Extension); ok {
 				for fk, fv := range ext.ToLegacy() {
 					extra[fk] = fv
@@ -100,7 +100,7 @@ func (c *Overrides) toLegacy() LegacyOverrides {
 				extra[k] = v
 			}
 		}
-		result.Extra = extra
+		result.Extensions = extra
 	}
 	return result
 }
@@ -186,8 +186,8 @@ type LegacyOverrides struct {
 	// tempodb limits
 	DedicatedColumns backend.DedicatedColumns `yaml:"parquet_dedicated_columns" json:"parquet_dedicated_columns"`
 
-	// Extra captures fields not recognised by this struct. See Overrides.Extra.
-	Extra map[string]any `yaml:",inline" json:"-"`
+	// Extensions captures fields not recognised by this struct. See Overrides.Extensions.
+	Extensions map[string]any `yaml:",inline" json:"-"`
 }
 
 // knownLegacyOverridesJSONFields returns the JSON key names declared on LegacyOverrides
@@ -218,13 +218,13 @@ func (l *LegacyOverrides) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	l.Extra = make(map[string]any, len(raw))
+	l.Extensions = make(map[string]any, len(raw))
 	for k, v := range raw {
 		var val any
 		if err := json.Unmarshal(v, &val); err != nil {
 			return err
 		}
-		l.Extra[k] = val
+		l.Extensions[k] = val
 	}
 	return nil
 }
@@ -235,7 +235,7 @@ func (l LegacyOverrides) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(l.Extra) == 0 {
+	if len(l.Extensions) == 0 {
 		return data, nil
 	}
 
@@ -243,7 +243,7 @@ func (l LegacyOverrides) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
-	for k, v := range l.Extra {
+	for k, v := range l.Extensions {
 		if _, exists := m[k]; exists {
 			continue // known fields take precedence
 		}
@@ -342,15 +342,15 @@ func (l *LegacyOverrides) toNewLimits() (Overrides, error) {
 			MaxCardinality: l.CostAttribution.MaxCardinality,
 		},
 	}
-	// Clone Extra so we can mutate it during legacy conversion.
-	if len(l.Extra) > 0 {
-		o.Extra = make(map[string]any, len(l.Extra))
-		for k, v := range l.Extra {
-			o.Extra[k] = v
+	// Clone Extensions so we can mutate it during legacy conversion.
+	if len(l.Extensions) > 0 {
+		o.Extensions = make(map[string]any, len(l.Extensions))
+		for k, v := range l.Extensions {
+			o.Extensions[k] = v
 		}
 	}
 	// For each registered extension that has legacy flat keys, collect those keys
-	// from o.Extra, call FromLegacy to build a typed instance, remove the flat keys,
+	// from o.Extensions, call FromLegacy to build a typed instance, remove the flat keys,
 	// and store the typed instance under the extension's nested key.
 	extensionRegistry.RLock()
 	legacyEntries := make([]*registryEntry, 0, len(extensionRegistry.entries))
@@ -364,7 +364,7 @@ func (l *LegacyOverrides) toNewLimits() (Overrides, error) {
 	for _, entry := range legacyEntries {
 		hasFlatKey := false
 		for _, fk := range entry.legacyKeys {
-			if _, ok := o.Extra[fk]; ok {
+			if _, ok := o.Extensions[fk]; ok {
 				hasFlatKey = true
 				break
 			}
@@ -374,16 +374,16 @@ func (l *LegacyOverrides) toNewLimits() (Overrides, error) {
 		}
 		instance := entry.newInstance()
 		instance.RegisterFlagsAndApplyDefaults("", flag.NewFlagSet("", flag.ContinueOnError))
-		if err := instance.FromLegacy(o.Extra); err != nil {
+		if err := instance.FromLegacy(o.Extensions); err != nil {
 			return Overrides{}, fmt.Errorf("extension %q: from legacy: %w", entry.key, err)
 		}
 		for _, fk := range entry.legacyKeys {
-			delete(o.Extra, fk)
+			delete(o.Extensions, fk)
 		}
-		if o.Extra == nil {
-			o.Extra = make(map[string]any)
+		if o.Extensions == nil {
+			o.Extensions = make(map[string]any)
 		}
-		o.Extra[entry.key] = instance
+		o.Extensions[entry.key] = instance
 	}
 	return o, nil
 }

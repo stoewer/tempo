@@ -21,7 +21,7 @@ type Extension interface {
 	// Return an empty slice if there are no legacy keys.
 	LegacyKeys() []string
 	// FromLegacy populates this extension from the flat legacy key map.
-	// The full Extra map is passed; implementations pick only their own keys.
+	// The full Extensions map is passed; implementations pick only their own keys.
 	FromLegacy(map[string]any) error
 	// ToLegacy serializes this extension to the flat legacy key map.
 	ToLegacy() map[string]any
@@ -70,20 +70,20 @@ func RegisterExtension[T Extension](e T) func(*Overrides) T {
 	}
 
 	return func(o *Overrides) T {
-		if o == nil || o.Extra == nil {
+		if o == nil || o.Extensions == nil {
 			var zero T
 			return zero
 		}
-		v, _ := o.Extra[key].(T)
+		v, _ := o.Extensions[key].(T)
 		return v
 	}
 }
 
-// processExtensions validates all entries in o.Extra against the registry, converts raw
+// processExtensions validates all entries in o.Extensions against the registry, converts raw
 // decoded values (from YAML or JSON) to typed Extension instances, applies defaults, and
 // calls Validate on each. It is idempotent: already-typed entries are only re-validated.
 func processExtensions(o *Overrides) error {
-	if len(o.Extra) == 0 {
+	if len(o.Extensions) == 0 {
 		return nil
 	}
 
@@ -94,7 +94,7 @@ func processExtensions(o *Overrides) error {
 	}
 	extensionRegistry.RUnlock()
 
-	for key, raw := range o.Extra {
+	for key, raw := range o.Extensions {
 		entry, ok := entries[key]
 		if !ok {
 			return fmt.Errorf("unknown extension key %q: must be registered via RegisterExtension before use", key)
@@ -125,7 +125,7 @@ func processExtensions(o *Overrides) error {
 			return fmt.Errorf("extension %q: %w", key, err)
 		}
 
-		o.Extra[key] = instance
+		o.Extensions[key] = instance
 	}
 	return nil
 }

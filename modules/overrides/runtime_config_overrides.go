@@ -43,8 +43,8 @@ func (o *perTenantOverrides) UnmarshalYAML(unmarshal func(interface{}) error) er
 	// Try to unmarshal it normally
 	type rawConfig perTenantOverrides
 	if err := unmarshal((*rawConfig)(o)); err == nil {
-		// Overrides.Extra absorbs unknown YAML fields without triggering a strict-mode error. Therefore,
-		// we check whether Overrides.Extra contains legacy fields.
+		// Overrides.Extensions absorbs unknown YAML fields without triggering a strict-mode error. Therefore,
+		// we check whether Overrides.Extensions contains legacy fields.
 		if !o.containsLegacyFields() {
 			o.ConfigType = ConfigTypeNew
 			for tenantID, limits := range o.TenantLimits {
@@ -83,7 +83,7 @@ func (o *perTenantOverrides) UnmarshalYAML(unmarshal func(interface{}) error) er
 	return nil
 }
 
-// containsLegacyFields reports whether any tenant's Extra map holds a key that is a known
+// containsLegacyFields reports whether any tenant's Extensions map holds a key that is a known
 // legacy field name or a registered extension flat key, indicating the YAML was in legacy format.
 func (o *perTenantOverrides) containsLegacyFields() bool {
 	legacyFields := knownLegacyOverridesYAMLFields()
@@ -92,7 +92,7 @@ func (o *perTenantOverrides) containsLegacyFields() bool {
 		if limits == nil {
 			continue
 		}
-		for key := range limits.Extra {
+		for key := range limits.Extensions {
 			if _, isLegacy := legacyFields[key]; isLegacy {
 				return true
 			}
